@@ -74,7 +74,7 @@ def get_llm(provider: str):
     elif provider == "gemini":
         from langchain_google_genai import ChatGoogleGenerativeAI
         # Fixed model version to 3.0
-        return ChatGoogleGenerativeAI(model="gemini-3.0-flash", temperature=0.1)
+        return ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.1)
     elif provider == "local (llama.cpp)":
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(

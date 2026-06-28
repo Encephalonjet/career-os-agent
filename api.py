@@ -2,6 +2,7 @@ import traceback
 import io
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 import database
 
@@ -112,7 +113,7 @@ async def evaluate_job(
             title=final_title or "Unknown Title",
             status="To Apply",
             score=score,
-            full_data=result_state 
+            full_data=jsonable_encoder(result_state) 
         )
         return {"status": "success", "job_id": job_id}
         
