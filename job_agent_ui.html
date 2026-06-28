@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job AI Agent - Career OS</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script>
+        Babel.registerPreset('react-classic', { presets: [[Babel.availablePresets['react'], { runtime: 'classic' }]] });
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; }
+        /* Smooth opening for details tag */
+        details > summary { list-style: none; }
+        details > summary::-webkit-details-marker { display: none; }
+        details[open] summary ~ * { animation: slideDown 0.3s ease-in-out; }
+        @keyframes slideDown {
+            0% { opacity: 0; transform: translateY(-10px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes toastSlide {
+            0% { opacity: 0; transform: translateX(100%); }
+            100% { opacity: 1; transform: translateX(0); }
+        }
+        .toast-animate { animation: toastSlide 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 h-screen w-screen overflow-hidden flex flex-col">
+    <div id="root" class="h-full w-full"></div>
+
+    <script type="text/babel" data-presets="react-classic">
+        const { useState, useEffect } = React;
+
+        const API_BASE_URL = "http://127.0.0.1:8000/api";
+
+        // ─────────────────────────────────────────────────────────────────
+        // 1. REUSABLE JOB INPUT FORM 
+        // ─────────────────────────────────────────────────────────────────
+        function JobInputForm({ onComplete, onCancel, isModal = false }) {
+            const [isLoading, setIsLoading] = useState(false);
+            const [errorMsg, setErrorMsg] = useState('');
+            
+            // State for the actual file and text inputs
+            const [selectedCvFile, setSelectedCvFile] = useState(null);
+            const [selectedJdFile, setSelectedJdFile] = useState(null);
+            
+            const [formData, setFormData] = useState({
+                base_cv_text: "",
+                company: "",
+                title: "",
+                jd_text: "", // Using this primarily for URLs now
+                raw_jd_fallback: "", // Strictly raw text fallback
+                provider: "gemini",
+                workModel: "Any",
+                jobType: "Any",
+                visa: "Not Required (Citizen/PR)"
+            });
+
+            // Automatically hide toast after 6 seconds
+            useEffect(() => {
+                if (errorMsg) {
+                    const timer = setTimeout(() => setErrorMsg(''), 6000);
+                    return () => clearTimeout(timer);
+                }
+            }, [errorMsg]);
+
+            const handleSubmit = async () => {
+                // Validation with explicit mandatory fields
+                if (!selectedCvFile && !formData.base_cv_text) {
+                    setErrorMsg("Please upload your Base CV or paste its text.");
+                    return;
+                }
+                if (!selectedJdFile && !formData.jd_text && !formData.raw_jd_fallback) {
+                    setErrorMsg("Please provide a Job URL, upload a JD document, or paste raw JD text.");
+                    return;
+                }
+
+                setIsLoading(true);
+                setErrorMsg('');
+                
+                try {
+                    const payload = new FormData();
+                    if (selectedCvFile) payload.append("file", selectedCvFile);
+                    if (selectedJdFile) payload.append("jd_file", selectedJdFile);
+                    
+                    payload.append("base_cv_text", formData.base_cv_text);
+                    payload.append("company", formData.company);
+                    payload.append("title", formData.title);
+                    
+                    // Combine URL box and Raw text fallback box into the single jd_text field for the backend
+                    const combined_jd = `${formData.jd_text}\n\n${formData.raw_jd_fallback}`.trim();
+                    payload.append("jd_text", combined_jd);
+                    
+                    payload.append("provider", formData.provider);
+
+                    const response = await fetch(`${API_BASE_URL}/evaluate`, {
+                        method: 'POST',
+                        body: payload 
+                    });
+
+                    if (!response.ok) {
+                        const err = await response.json();
+                        throw new Error(err.detail || "Failed to evaluate job. Check backend console.");
+                    }
+                    
+                    onComplete();
+                } catch (error) {
+                    setErrorMsg(error.message);
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            if (isLoading) {
+                return (
+                    <div className="flex flex-col items-center justify-center p-12 text-slate-600">
+                        <i className="fa-solid fa-circle-notch fa-spin text-5xl text-indigo-600 mb-6"></i>
+                        <h3 className="text-xl font-bold">Agent is hunting & analyzing...</h3>
+                        <p className="text-sm mt-2 text-center text-slate-400">Bypassing bot-blockers, running LangGraph extraction, and scoring dimensions. This takes 30-60 seconds.</p>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="space-y-6 relative">
+                    
+                    {/* STICKY TOAST ERROR */}
+                    {errorMsg && (
+                        <div className="fixed top-6 right-6 bg-red-600 text-white px-6 py-4 rounded-xl shadow-2xl z-50 flex items-center gap-4 toast-animate border-2 border-red-400">
+                            <i className="fa-solid fa-circle-exclamation text-2xl"></i>
+                            <div className="flex flex-col max-w-sm">
+                                <span className="font-bold text-sm">Action Failed</span>
+                                <span className="text-xs text-red-100">{errorMsg}</span>
+                            </div>
+                            <button onClick={() => setErrorMsg('')} className="ml-2 hover:text-red-200 transition-colors">
+                                <i className="fa-solid fa-xmark text-xl"></i>
+                            </button>
+                        </div>
+                    )}
+
+                    {/* CV UPLOAD AREA (MANDATORY) */}
+                    <div className="space-y-2">
+                        <label className="text-sm font-bold text-slate-700">
+                            1. Upload Base CV <span className="text-red-500">*</span>
+                        </label>
+                        <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 cursor-pointer transition-colors relative group">
+                            <input 
+                                type="file" 
+                                accept=".pdf,.doc,.docx"
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
+                                onChange={(e) => {
+                                    if (e.target.files[0]) setSelectedCvFile(e.target.files[0]);
+                                }}
+                            />
+                            <i className={`fa-solid fa-cloud-arrow-up text-3xl mb-2 transition-colors ${selectedCvFile ? 'text-green-500' : 'text-indigo-400 group-hover:text-indigo-600'}`}></i>
+                            <span className="text-sm font-medium text-slate-600">
+                                {selectedCvFile ? <span className="text-green-600 font-bold">{selectedCvFile.name} attached</span> : <span>Drag & Drop PDF/Docx or <span className="text-indigo-600">Browse</span></span>}
+                            </span>
+                        </div>
+                    </div>
+
+                    <hr className="border-slate-200" />
+
+                    {/* TARGET JOB DETAILS (OPTIONAL) */}
+                    <div className="flex flex-col md:flex-row gap-4">
+                        <div className="flex-1 space-y-2">
+                            <label className="text-sm font-bold text-slate-700">
+                                Company Name <span className="text-slate-400 font-normal ml-1">(Optional)</span>
+                            </label>
+                            <input 
+                                type="text" 
+                                value={formData.company}
+                                onChange={(e) => setFormData({...formData, company: e.target.value})}
+                                placeholder="Auto-detected if left blank" 
+                                className="w-full border border-slate-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white" 
+                            />
+                        </div>
+                        <div className="flex-1 space-y-2">
+                            <label className="text-sm font-bold text-slate-700">
+                                Target Job Title <span className="text-slate-400 font-normal ml-1">(Optional)</span>
+                            </label>
+                            <input 
+                                type="text" 
+                                value={formData.title}
+                                onChange={(e) => setFormData({...formData, title: e.target.value})}
+                                placeholder="Auto-detected if left blank" 
+                                className="w-full border border-slate-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white" 
+                            />
+                        </div>
+                    </div>
+
+                    {/* JD UPLOAD & URL AREA (MANDATORY) */}
+                    <div className="space-y-4">
+                        <label className="text-sm font-bold text-slate-700 block mb-1">
+                            2. Target Job Source <span className="text-red-500">*</span>
+                        </label>
+                        <div className="flex flex-col md:flex-row gap-4">
+                            <div className="md:w-1/3 border-2 border-dashed border-slate-300 rounded-xl p-4 flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 cursor-pointer transition-colors relative">
+                                <input 
+                                    type="file" 
+                                    accept=".pdf,.doc,.docx,.txt"
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
+                                    onChange={(e) => {
+                                        if (e.target.files[0]) setSelectedJdFile(e.target.files[0]);
+                                    }}
+                                />
+                                <i className={`fa-solid fa-file-contract text-2xl mb-1 ${selectedJdFile ? 'text-green-500' : 'text-slate-400'}`}></i>
+                                <span className="text-xs font-medium text-slate-600 text-center">
+                                    {selectedJdFile ? <span className="text-green-600 font-bold break-all">{selectedJdFile.name}</span> : <span>Upload JD Doc</span>}
+                                </span>
+                            </div>
+                            
+                            <div className="md:w-2/3">
+                                <textarea 
+                                    rows="3" 
+                                    value={formData.jd_text}
+                                    onChange={(e) => setFormData({...formData, jd_text: e.target.value})}
+                                    placeholder="Or paste multiple Job URLs (e.g., https://greenhouse.io...). The agent uses Jina AI to bypass blocks and auto-scrape them." 
+                                    className="w-full h-full border border-slate-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none custom-scrollbar bg-white"
+                                ></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* COLLAPSIBLE ADVANCED FILTERS */}
+                    <details className="group border border-slate-200 rounded-xl bg-white shadow-sm overflow-hidden">
+                        <summary className="flex items-center justify-between p-4 font-bold text-slate-800 cursor-pointer hover:bg-slate-50 transition-colors select-none">
+                            <div className="flex items-center gap-3">
+                                <div className="bg-indigo-100 text-indigo-600 p-1.5 rounded-lg">
+                                    <i className="fa-solid fa-sliders text-sm"></i>
+                                </div>
+                                Advanced Settings & Fallbacks
+                            </div>
+                            <i className="fa-solid fa-chevron-down transition-transform duration-300 group-open:rotate-180 text-slate-400"></i>
+                        </summary>
+                        
+                        <div className="p-5 border-t border-slate-100 space-y-6 bg-slate-50/50">
+                            
+                            {/* Raw Text Fallbacks */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Raw CV Text (Fallback)</label>
+                                    <textarea 
+                                        rows="3"
+                                        value={formData.base_cv_text}
+                                        onChange={(e) => setFormData({...formData, base_cv_text: e.target.value})}
+                                        placeholder="Paste CV text if PDF upload fails..." 
+                                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none custom-scrollbar"
+                                    ></textarea>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Raw JD Text (Fallback)</label>
+                                    <textarea 
+                                        rows="3"
+                                        value={formData.raw_jd_fallback}
+                                        onChange={(e) => setFormData({...formData, raw_jd_fallback: e.target.value})}
+                                        placeholder="Paste raw JD text if bot-blockers prevent URL scraping..." 
+                                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none custom-scrollbar"
+                                    ></textarea>
+                                </div>
+                            </div>
+
+                            {/* Filters & Preferences */}
+                            <div className="space-y-3">
+                                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block border-b pb-2">Target Preferences</label>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-500 block mb-1">Work Model</label>
+                                        <select value={formData.workModel} onChange={e => setFormData({...formData, workModel: e.target.value})} className="w-full border rounded-lg p-2 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                            <option>Any</option>
+                                            <option>Remote</option>
+                                            <option>Hybrid</option>
+                                            <option>On-site</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-500 block mb-1">Job Type</label>
+                                        <select value={formData.jobType} onChange={e => setFormData({...formData, jobType: e.target.value})} className="w-full border rounded-lg p-2 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                            <option>Any</option>
+                                            <option>Permanent / Full-Time</option>
+                                            <option>Contract / Freelance</option>
+                                            <option>Internship</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-500 block mb-1">Sponsorship / Visa</label>
+                                        <select value={formData.visa} onChange={e => setFormData({...formData, visa: e.target.value})} className="w-full border rounded-lg p-2 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                                            <option>Not Required (Citizen/PR)</option>
+                                            <option>Require Sponsorship</option>
+                                            <option>Only Visa-Supported Roles</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* LLM Engine Selection */}
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block border-b pb-2">AI Engine</label>
+                                <select 
+                                    value={formData.provider}
+                                    onChange={(e) => setFormData({...formData, provider: e.target.value})}
+                                    className="w-full border border-slate-300 rounded-lg px-4 py-2 text-sm focus:ring-1 focus:ring-indigo-500 focus:outline-none bg-white font-medium"
+                                >
+                                    <option value="gemini">Google Gemini (Recommended)</option>
+                                    <option value="openai">OpenAI (ChatGPT)</option>
+                                    <option value="local (llama.cpp)">Local Model (Llama.cpp via Tailscale)</option>
+                                </select>
+                            </div>
+
+                        </div>
+                    </details>
+
+                    <div className="flex gap-4 pt-4">
+                        {isModal && (
+                            <button onClick={onCancel} className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors">
+                                Cancel
+                            </button>
+                        )}
+                        <button onClick={handleSubmit} className="flex-[2] bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 rounded-xl shadow-lg transition-transform active:scale-[0.98] flex justify-center items-center gap-2">
+                            <i className="fa-solid fa-bolt text-yellow-400"></i> Run Auto-Extraction & Evaluate
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // 2. KANBAN BOARD COMPONENT
+        // ─────────────────────────────────────────────────────────────────
+        function KanbanBoard({ jobs, onUpdateStatus, onViewJob }) {
+            const columns = [
+                { id: "To Apply", title: "To Apply", icon: "fa-inbox", color: "bg-slate-200 text-slate-700" },
+                { id: "Applied", title: "Applied", icon: "fa-paper-plane", color: "bg-blue-100 text-blue-700" },
+                { id: "Interviewing", title: "Interviewing", icon: "fa-comments", color: "bg-purple-100 text-purple-700" },
+                { id: "Rejected", title: "Rejected", icon: "fa-circle-xmark", color: "bg-red-100 text-red-700" }
+            ];
+
+            return (
+                <div className="flex-1 flex overflow-x-auto p-6 gap-6 custom-scrollbar bg-slate-100 h-full">
+                    {columns.map(col => (
+                        <div key={col.id} className="flex flex-col w-80 shrink-0 h-full max-h-full">
+                            <div className={`px-4 py-3 rounded-t-xl font-bold flex items-center justify-between ${col.color}`}>
+                                <div className="flex items-center gap-2">
+                                    <i className={`fa-solid ${col.icon}`}></i> {col.title}
+                                </div>
+                                <span className="bg-white/50 px-2 py-0.5 rounded-full text-xs">{jobs.filter(j => j.status === col.id).length}</span>
+                            </div>
+                            
+                            <div className="flex-1 bg-slate-200/50 rounded-b-xl p-3 overflow-y-auto custom-scrollbar space-y-3 border-x border-b border-slate-200 shadow-inner">
+                                {jobs.filter(j => j.status === col.id).map(job => (
+                                    <div key={job.id} className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <h4 className="font-bold text-slate-800">{job.title}</h4>
+                                            <span className="text-[10px] font-bold px-2 py-1 rounded bg-indigo-100 text-indigo-700">{job.score}/100</span>
+                                        </div>
+                                        <p className="text-sm text-slate-500 mb-4">{job.company}</p>
+                                        <div className="flex justify-between items-center pt-3 border-t border-slate-100">
+                                            <button onClick={() => onViewJob(job)} className="text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-2 py-1 rounded">
+                                                Workspace <i className="fa-solid fa-arrow-right ml-1"></i>
+                                            </button>
+                                            <select 
+                                                value={job.status} 
+                                                onChange={(e) => onUpdateStatus(job.id, e.target.value)} 
+                                                className="text-xs border rounded p-1 text-slate-600 focus:outline-none bg-slate-50 hover:bg-slate-100 cursor-pointer"
+                                            >
+                                                {columns.map(c => <option key={c.id} value={c.id}>Move: {c.title}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // 3. AGENT WORKSPACE 
+        // ─────────────────────────────────────────────────────────────────
+        function AgentWorkspace({ jobData, onBack }) {
+            const [leftTab, setLeftTab] = useState('jd');
+            const [rightTab, setRightTab] = useState('roadmap');
+            
+            const fullData = jobData.full_data || {};
+            const evals = (fullData.evaluations && fullData.evaluations.length > 0) ? fullData.evaluations[0] : {};
+            const docs = (fullData.generated_docs && fullData.generated_docs.length > 0) ? fullData.generated_docs[0] : {};
+            const coach = (fullData.coach_outputs && fullData.coach_outputs.length > 0) ? fullData.coach_outputs[0] : {};
+            const jobInput = (fullData.jobs_to_process && fullData.jobs_to_process.length > 0) ? fullData.jobs_to_process[0] : {};
+
+            return (
+                <div className="flex flex-col h-full bg-slate-50 relative min-w-0 w-full">
+                    {/* Header */}
+                    <div className="bg-white border-b shadow-sm p-4 lg:px-6 flex justify-between items-center z-10 shrink-0">
+                        <div className="flex items-center gap-4">
+                            <button onClick={onBack} className="text-slate-500 hover:text-indigo-600 font-bold text-sm bg-slate-100 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors">
+                                <i className="fa-solid fa-arrow-left mr-1"></i> Back to Kanban
+                            </button>
+                            <h2 className="text-xl font-bold text-slate-900 ml-2">{jobData.company} <span className="text-slate-300">/</span> {jobData.title}</h2>
+                        </div>
+                        <div className="px-4 py-1.5 bg-indigo-100 text-indigo-800 font-bold rounded-lg text-sm border border-indigo-200 flex items-center gap-2">
+                            <i className="fa-solid fa-ranking-star"></i> Match: {evals.overall_score || jobData.score}/100
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col lg:flex-row flex-1 min-h-0 bg-slate-100">
+                        {/* LEFT PANE */}
+                        <div className="w-full lg:w-1/2 flex flex-col border-r border-slate-200 bg-white h-full">
+                            <div className="flex border-b bg-slate-50 overflow-x-auto custom-scrollbar shrink-0">
+                                <button onClick={() => setLeftTab('jd')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap ${leftTab === 'jd' ? 'border-indigo-600 text-indigo-600 bg-white' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+                                    <i className="fa-solid fa-briefcase mr-2"></i> Scraped JD
+                                </button>
+                                <button onClick={() => setLeftTab('ats')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap ${leftTab === 'ats' ? 'border-indigo-600 text-indigo-600 bg-white' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+                                    <i className="fa-solid fa-file-contract mr-2"></i> ATS CV
+                                </button>
+                                <button onClick={() => setLeftTab('cl')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap ${leftTab === 'cl' ? 'border-indigo-600 text-indigo-600 bg-white' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+                                    <i className="fa-solid fa-envelope-open-text mr-2"></i> Cover Letter
+                                </button>
+                                <button onClick={() => setLeftTab('base')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap ${leftTab === 'base' ? 'border-indigo-600 text-indigo-600 bg-white' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+                                    <i className="fa-solid fa-file-lines mr-2"></i> Base CV
+                                </button>
+                            </div>
+                            <div className="flex-1 p-6 overflow-y-auto custom-scrollbar font-mono text-sm whitespace-pre-wrap text-slate-700">
+                                {leftTab === 'jd' && (jobInput.raw_text || "No JD available.")}
+                                {leftTab === 'ats' && (docs.tailored_cv_markdown || "No generated CV available.")}
+                                {leftTab === 'cl' && (docs.cover_letter_markdown || "No Cover Letter available.")}
+                                {leftTab === 'base' && (fullData.base_cv || "No Base CV available.")}
+                            </div>
+                        </div>
+
+                        {/* RIGHT PANE */}
+                        <div className="w-full lg:w-1/2 flex flex-col bg-slate-50 h-[50vh] lg:h-full shrink-0 lg:shrink min-w-0">
+                            <div className="flex border-b bg-white overflow-x-auto custom-scrollbar shrink-0">
+                                <button onClick={() => setRightTab('roadmap')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap ${rightTab === 'roadmap' ? 'border-indigo-600 text-indigo-600 bg-slate-50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+                                    <i className="fa-solid fa-map-location-dot mr-2"></i> Gaps & Roadmap
+                                </button>
+                                <button onClick={() => setRightTab('coach')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap ${rightTab === 'coach' ? 'border-indigo-600 text-indigo-600 bg-slate-50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+                                    <i className="fa-solid fa-chalkboard-user mr-2"></i> Interview Coach
+                                </button>
+                            </div>
+
+                            <div className="flex-1 overflow-hidden relative flex flex-col">
+                                {rightTab === 'roadmap' && (
+                                    <div className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar space-y-6">
+                                        <div className="p-5 bg-red-50 border border-red-100 rounded-xl shadow-sm">
+                                            <h3 className="font-bold text-sm text-red-800 mb-3 flex items-center gap-2"><i className="fa-solid fa-triangle-exclamation"></i> Identified Skill Gaps</h3>
+                                            <ul className="text-sm text-red-700 space-y-1.5 ml-5 list-disc">
+                                                {evals.gap_analysis && evals.gap_analysis.map((g, i) => <li key={i}>{g}</li>)}
+                                                {(!evals.gap_analysis || evals.gap_analysis.length === 0) && <li>No specific gaps identified.</li>}
+                                            </ul>
+                                        </div>
+                                        <div className="p-5 bg-green-50 border border-green-100 rounded-xl shadow-sm">
+                                            <h3 className="font-bold text-sm text-green-800 mb-3 flex items-center gap-2"><i className="fa-solid fa-shield-halved"></i> Candidate Strengths</h3>
+                                            <ul className="text-sm text-green-700 space-y-1.5 ml-5 list-disc">
+                                                {evals.strengths && evals.strengths.map((s, i) => <li key={i}>{s}</li>)}
+                                                {(!evals.strengths || evals.strengths.length === 0) && <li>No specific strengths logged.</li>}
+                                            </ul>
+                                        </div>
+                                        <div>
+                                            <h3 className="font-bold text-sm text-slate-800 pt-2 border-t mb-4">Learning Roadmap (Resources)</h3>
+                                            <div className="space-y-3">
+                                                {docs.learning_roadmap && docs.learning_roadmap.map((res, i) => (
+                                                    <div key={i} className="p-4 bg-white border border-slate-200 rounded-lg shadow-sm flex items-center justify-between hover:border-indigo-300 transition-colors">
+                                                        <div>
+                                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${String(res.type || res.cost).toLowerCase().includes('free') ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'} mb-1.5 inline-block`}>
+                                                                {res.type || res.cost || "Resource"}
+                                                            </span>
+                                                            <h4 className="font-semibold text-sm text-slate-800">{res.topic || res.title}</h4>
+                                                        </div>
+                                                        {res.url && res.url !== "#" && (
+                                                            <a href={res.url} target="_blank" className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors">
+                                                                <i className="fa-solid fa-arrow-up-right-from-square text-xs"></i>
+                                                            </a>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {rightTab === 'coach' && (
+                                    <div className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar space-y-4">
+                                        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 border-l-4 border-l-green-500">
+                                            <h3 className="font-bold text-slate-800 mb-3 text-sm flex items-center gap-2"><i className="fa-solid fa-money-bill-wave text-green-500"></i> Salary Strategy</h3>
+                                            <p className="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">{coach.salary_strategy}</p>
+                                        </div>
+                                        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 border-l-4 border-l-blue-500">
+                                            <h3 className="font-bold text-slate-800 mb-3 text-sm flex items-center gap-2"><i className="fa-solid fa-comments text-blue-500"></i> Interview Questions</h3>
+                                            <p className="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">{coach.interview_questions}</p>
+                                        </div>
+                                        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 border-l-4 border-l-purple-500">
+                                            <h3 className="font-bold text-slate-800 mb-3 text-sm flex items-center gap-2"><i className="fa-regular fa-calendar-check text-purple-500"></i> 30-Day Prep Plan</h3>
+                                            <p className="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">{coach.prep_plan}</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // 4. MAIN APP CONTROLLER
+        // ─────────────────────────────────────────────────────────────────
+        function App() {
+            const [view, setView] = useState('input'); 
+            const [activeJob, setActiveJob] = useState(null);
+            const [jobs, setJobs] = useState([]);
+
+            const fetchJobs = async () => {
+                try {
+                    const res = await fetch(`${API_BASE_URL}/jobs`);
+                    if(res.ok) {
+                        const data = await res.json();
+                        setJobs(data.jobs || []);
+                        return data.jobs || [];
+                    }
+                } catch (err) {
+                    console.error("Failed to fetch jobs.", err);
+                }
+                return [];
+            };
+
+            // Only fetch jobs on initial load to check if we have data
+            useEffect(() => {
+                fetchJobs().then(data => {
+                    // Start on input screen implicitly
+                });
+            }, []);
+
+            const handleUpdateStatus = async (jobId, newStatus) => {
+                try {
+                    await fetch(`${API_BASE_URL}/jobs/${jobId}/status`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ status: newStatus })
+                    });
+                    fetchJobs();
+                } catch (err) {
+                    console.error("Failed to update status", err);
+                }
+            };
+
+            return (
+                <div className="flex flex-col h-screen w-full bg-slate-50">
+                    {/* Top Navigation */}
+                    <div className="h-16 border-b bg-slate-900 text-white flex items-center justify-between px-6 shrink-0 z-20 shadow-sm">
+                        <div className="font-bold text-lg flex items-center gap-3">
+                            <div className="w-8 h-8 rounded bg-indigo-500 flex items-center justify-center shadow-lg">
+                                <i className="fa-solid fa-robot text-white text-sm"></i>
+                            </div>
+                            Career OS
+                        </div>
+                        <div className="flex gap-3">
+                            <button onClick={() => { setView('dashboard'); setActiveJob(null); }} className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors flex items-center gap-2 ${view === 'dashboard' && !activeJob ? 'bg-slate-700 border-slate-600 text-white' : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300'}`}>
+                                <i className="fa-solid fa-table-columns"></i> Kanban Board
+                            </button>
+                            <button onClick={() => { setView('input'); setActiveJob(null); }} className={`px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-transform active:scale-95 flex items-center gap-2 ${view === 'input' ? 'bg-indigo-600 text-white' : 'bg-indigo-500 hover:bg-indigo-600 text-white'}`}>
+                                <i className="fa-solid fa-plus"></i> Add New Job
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-hidden">
+                        {/* MAIN INPUT VIEW */}
+                        {view === 'input' && (
+                            <div className="h-full w-full flex items-center justify-center p-4 bg-slate-100 overflow-y-auto custom-scrollbar">
+                                <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl p-8 border border-slate-200 my-auto">
+                                    <div className="flex flex-col items-center justify-center mb-8">
+                                        <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 mb-2">Job Evaluation Agent</h1>
+                                        <p className="text-slate-500 text-sm">Upload your CV and target job details to generate an ATS-optimized match.</p>
+                                    </div>
+                                    <JobInputForm 
+                                        onComplete={async () => {
+                                            const updatedJobs = await fetchJobs();
+                                            setActiveJob(updatedJobs[updatedJobs.length - 1]);
+                                            setView('dashboard');
+                                        }} 
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* DASHBOARD VIEW (Kanban or Workspace) */}
+                        {view === 'dashboard' && (
+                            <React.Fragment>
+                                {!activeJob ? (
+                                    <KanbanBoard 
+                                        jobs={jobs} 
+                                        onUpdateStatus={handleUpdateStatus} 
+                                        onViewJob={(job) => setActiveJob(job)} 
+                                    />
+                                ) : (
+                                    <AgentWorkspace 
+                                        jobData={activeJob} 
+                                        onBack={() => setActiveJob(null)} 
+                                    />
+                                )}
+                            </React.Fragment>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
