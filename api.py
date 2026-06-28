@@ -61,16 +61,17 @@ def parse_uploaded_file(file: UploadFile) -> str:
 
 @app.post("/api/evaluate")
 async def evaluate_job(
-    file: UploadFile = File(None),         # The Base CV File
-    jd_file: UploadFile = File(None),      # The Job Description File (Can contain URLs)
+    file: UploadFile = File(None),         
+    jd_file: UploadFile = File(None),      
     base_cv_text: str = Form(""),
     jd_text: str = Form(""),
-    company: str = Form(""),
-    title: str = Form(""),
+    company: str = Form(""),               # Now completely optional at the API level
+    title: str = Form(""),                 # Now completely optional at the API level
     provider: str = Form("gemini")
 ):
     """
     Accepts physical files OR raw text for both the CV and the JD.
+    Company and Title can be empty; the backend AI will auto-extract them.
     """
     try:
         # 1. Parse Base CV
@@ -79,15 +80,14 @@ async def evaluate_job(
             extracted_cv_text = base_cv_text
 
         if not extracted_cv_text.strip():
-            raise HTTPException(status_code=400, detail="No CV text could be extracted or provided.")
+            raise HTTPException(status_code=400, detail="No CV text could be extracted or provided. Please provide a CV.")
 
         # 2. Parse JD File
         extracted_jd_text = parse_uploaded_file(jd_file)
-        # Combine uploaded file text with any pasted text/URLs
         final_jd_text = f"{extracted_jd_text}\n\n{jd_text}".strip()
 
         if not final_jd_text:
-            raise HTTPException(status_code=400, detail="No Job Description could be extracted or provided.")
+            raise HTTPException(status_code=400, detail="No Job Description could be extracted or provided. Please provide a JD.")
 
         # 3. RUN THE LANGGRAPH AGENT
         result_state = run_agent(
@@ -102,9 +102,14 @@ async def evaluate_job(
         evals = result_state.get("evaluations", [{}])[0]
         score = getattr(evals, "overall_score", 0)
         
+        # If company/title were blank, grab the auto-extracted ones from the AI state
+        processed_job = result_state.get("jobs_to_process", [{}])[0]
+        final_company = processed_job.company_name if hasattr(processed_job, 'company_name') else company
+        final_title = processed_job.job_title if hasattr(processed_job, 'job_title') else title
+        
         job_id = database.add_job(
-            company=company,
-            title=title,
+            company=final_company or "Unknown Company",
+            title=final_title or "Unknown Title",
             status="To Apply",
             score=score,
             full_data=result_state 
