@@ -1,0 +1,130 @@
+# version 2 Job AI Agent
+"""
+job_pipeline.py
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Advanced LangGraph Architecture for the Ultimate Job AI Agent
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+from typing import TypedDict, List, Dict, Literal
+from pydantic import BaseModel, Field
+from langgraph.graph import StateGraph, END, START
+import operator
+from typing import Annotated
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. DATA MODELS & SCHEMAS (The Single Source of Truth)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class JobEvaluation(BaseModel):
+    """The 12-dimension scoring system (A-F)"""
+    tech_stack_match: Literal['A', 'B', 'C', 'D', 'F']
+    role_seniority: Literal['A', 'B', 'C', 'D', 'F']
+    salary_alignment: Literal['A', 'B', 'C', 'D', 'F']
+    remote_policy: Literal['A', 'B', 'C', 'D', 'F']
+    company_stage: Literal['A', 'B', 'C', 'D', 'F']
+    domain_fit: Literal['A', 'B', 'C', 'D', 'F']
+    growth_opportunities: Literal['A', 'B', 'C', 'D', 'F'] # Added
+    work_life_balance: Literal['A', 'B', 'C', 'D', 'F']    # Added
+    commute_timezone: Literal['A', 'B', 'C', 'D', 'F']
+    ats_keyword_density: Literal['A', 'B', 'C', 'D', 'F']
+    
+    overall_score: int = Field(description="Total weighted score out of 100")
+    gap_analysis: List[str] = Field(description="Specific skills missing from CV")
+
+class GeneratedDocs(BaseModel):
+    job_id: str
+    tailored_cv_markdown: str
+    cover_letter_markdown: str
+    # Enforce 5-10 resources via LLM prompting
+    learning_roadmap: List[Dict[str, str]] # [{"type": "Free Video", "topic": "Kafka", "url": "..."}]
+
+class AgentState(TypedDict):
+    base_cv: str
+    preferences: dict
+    scraped_jobs: List[dict]
+    evaluations: Annotated[List[JobEvaluation], operator.add]
+    generated_docs: Annotated[List[GeneratedDocs], operator.add]
+    user_feedback: str 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. CORE NODES (The Engine)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def fetch_jobs_node(state: AgentState):
+    mock_scraped_jobs = [
+        {"id": "job_1", "title": "Senior AI Engineer", "company": "Anthropic", "url": "https://..."}
+    ]
+    return {"scraped_jobs": mock_scraped_jobs}
+
+def evaluate_single_job_node(job_data: dict):
+    # TODO: Connect LLM here. 
+    # Example Prompt: "Grade this job A-F on the 12 dimensions."
+    mock_eval = JobEvaluation(
+        tech_stack_match='A', role_seniority='A', salary_alignment='B', remote_policy='A', 
+        company_stage='A', domain_fit='A', growth_opportunities='A', work_life_balance='B', 
+        commute_timezone='A', ats_keyword_density='C', overall_score=88,
+        gap_analysis=["Production experience with vLLM missing"]
+    )
+    return {"evaluations": [mock_eval]}
+
+def prepare_parallel_evaluations(state: AgentState):
+    from langgraph.constants import Send
+    jobs = state.get("scraped_jobs", [])
+    return [Send("evaluate_single_job", {"job": job, "base_cv": state["base_cv"]}) for job in jobs]
+
+def generate_documents_node(state: AgentState):
+    # TODO: Connect LLM here with Web Search Tool.
+    # Instruction: "Search the web for 5-10 genuine, scam-free resources to fill the gap. Mix free & cheap paid."
+    mock_docs = GeneratedDocs(
+        job_id="job_1",
+        tailored_cv_markdown="**Tailored CV Content Here**",
+        cover_letter_markdown="Dear Hiring Manager...",
+        learning_roadmap=[
+            {"type": "Free Video", "topic": "vLLM Basics", "url": "https://youtube.com/watch?v=..."},
+            {"type": "Paid Course ($15)", "topic": "Advanced GenAI Serving", "url": "https://udemy.com/..."}
+        ]
+    )
+    return {"generated_docs": [mock_docs]}
+
+def human_review_node(state: AgentState):
+    # INTERRUPT HAPPENS HERE. Waits for UI.
+    return {}
+
+def semi_auto_apply_node(state: AgentState):
+    print(f"🚀 Launching Playwright for manual review...")
+    # --- PLAYWRIGHT AUTOFILL & PAUSE LOGIC ---
+    # from playwright.sync_api import sync_playwright
+    # with sync_playwright() as p:
+    #     browser = p.chromium.launch(headless=False) # Headless=False so you can see it!
+    #     page = browser.new_page()
+    #     page.goto(state["scraped_jobs"][0]["url"])
+    #     page.fill("input[name='firstName']", "Your Name")
+    #     # ... attach CV ...
+    #     
+    #     print("Form filled. Pausing for human review...")
+    #     page.pause() # This freezes the script. You click 'Submit' manually.
+    #     browser.close()
+    return {}
+
+def route_after_review(state: AgentState) -> str:
+    feedback = state.get("user_feedback", "")
+    if "rebuild" in feedback.lower(): return "generate_documents" 
+    return "semi_auto_apply" 
+
+def build_job_agent():
+    builder = StateGraph(AgentState)
+    builder.add_node("fetch_jobs", fetch_jobs_node)
+    builder.add_node("evaluate_single_job", evaluate_single_job_node)
+    builder.add_node("generate_documents", generate_documents_node)
+    builder.add_node("human_review", human_review_node)
+    builder.add_node("semi_auto_apply", semi_auto_apply_node)
+    
+    builder.add_edge(START, "fetch_jobs")
+    builder.add_conditional_edges("fetch_jobs", prepare_parallel_evaluations, ["evaluate_single_job"])
+    builder.add_edge("evaluate_single_job", "generate_documents")
+    builder.add_edge("generate_documents", "human_review")
+    builder.add_conditional_edges("human_review", route_after_review, {"generate_documents": "generate_documents", "semi_auto_apply": "semi_auto_apply"})
+    builder.add_edge("semi_auto_apply", END)
+    
+    from langgraph.checkpoint.memory import MemorySaver
+    return builder.compile(checkpointer=MemorySaver(), interrupt_before=["human_review"])

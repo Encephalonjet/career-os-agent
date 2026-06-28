@@ -1,0 +1,28 @@
+# Core Frameworks
+fastapi
+uvicorn
+streamlit
+pydantic
+python-dotenv
+python-multipart
+pdfplumber
+python-docx
+
+# LangGraph & LangChain
+langgraph
+langchain-core
+langchain-community
+langchain-openai
+langchain-google-genai
+
+# Local Models
+#llama-cpp-python==0.2.56
+
+# Web Scraping & Automation (Phase 3 & 5)
+
+playwright
+beautifulsoup4
+
+# Database & Integration (Phase 4)
+
+notion-client

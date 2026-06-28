@@ -1,0 +1,198 @@
+# version 1 Job AI Agent
+"""
+job_pipeline.py
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Advanced LangGraph Architecture for the Ultimate Job AI Agent
+
+Key Features Demonstrated:
+1. Parallel Batch Processing: Evaluates multiple jobs simultaneously using `Send`.
+2. Structured Output: Uses Pydantic to enforce the 10-dimension A-F scoring.
+3. Human-in-the-Loop: Pauses execution for user approval of CV/Cover Letter.
+4. Single Source of Truth: TypedDict holds the entire state of the pipeline.
+
+Note: This is an architectural skeleton. You will need to plug in your 
+actual scraping logic (e.g., Playwright) and LLM calls.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+from typing import TypedDict, List, Dict, Any, Literal
+from pydantic import BaseModel, Field
+from langgraph.graph import StateGraph, END, START
+import operator
+from typing import Annotated
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. DATA MODELS & SCHEMAS (The Single Source of Truth)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class JobEvaluation(BaseModel):
+    """The 10-dimension scoring system (A-F)"""
+    tech_stack_match: Literal['A', 'B', 'C', 'D', 'F']
+    salary_alignment: Literal['A', 'B', 'C', 'D', 'F']
+    remote_policy: Literal['A', 'B', 'C', 'D', 'F']
+    company_growth: Literal['A', 'B', 'C', 'D', 'F']
+    role_seniority: Literal['A', 'B', 'C', 'D', 'F']
+    # ... add the other 5 dimensions here ...
+    overall_score: int = Field(description="Total weighted score out of 100")
+    gap_analysis: List[str] = Field(description="Specific skills missing from CV")
+
+class GeneratedDocs(BaseModel):
+    job_id: str
+    tailored_cv_markdown: str
+    cover_letter_markdown: str
+    learning_roadmap: List[Dict[str, str]] # e.g., [{"topic": "Kafka", "url": "..."}]
+
+class AgentState(TypedDict):
+    base_cv: str
+    preferences: dict
+    scraped_jobs: List[dict]
+    
+    # We use Annotated with operator.add to merge parallel processing results
+    evaluations: Annotated[List[JobEvaluation], operator.add]
+    generated_docs: Annotated[List[GeneratedDocs], operator.add]
+    
+    jobs_to_apply: List[str]
+    user_feedback: str # Captured during Human-in-the-loop
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. CORE NODES (The Engine)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def fetch_jobs_node(state: AgentState):
+    print("🔍 Scanning portals (LinkedIn, Greenhouse, etc.)...")
+    # TODO: Implement Playwright/Scraping API here
+    mock_scraped_jobs = [
+        {"id": "job_1", "title": "Senior AI Engineer", "company": "Anthropic"},
+        {"id": "job_2", "title": "Lead GenAI Dev", "company": "OpenAI"}
+    ]
+    return {"scraped_jobs": mock_scraped_jobs}
+
+def evaluate_single_job_node(job_data: dict):
+    """
+    This node acts as a sub-agent. It will run in PARALLEL for every job found.
+    """
+    job = job_data["job"]
+    print(f"  ⚡ Evaluating {job['title']} at {job['company']}...")
+    # TODO: Call LLM with base_cv and job description, requesting JobEvaluation schema
+    
+    mock_eval = JobEvaluation(
+        tech_stack_match='A', salary_alignment='B', remote_policy='A', 
+        company_growth='A', role_seniority='B', overall_score=85,
+        gap_analysis=["Lacks production experience with vLLM"]
+    )
+    return {"evaluations": [mock_eval]}
+
+def prepare_parallel_evaluations(state: AgentState):
+    """Router logic to map over all scraped jobs and send them to the evaluator"""
+    from langgraph.constants import Send
+    jobs = state.get("scraped_jobs", [])
+    # This triggers the `evaluate_single_job_node` concurrently for every job
+    return [Send("evaluate_single_job", {"job": job, "base_cv": state["base_cv"]}) for job in jobs]
+
+def generate_documents_node(state: AgentState):
+    print("📝 Generating Tailored CVs, Cover Letters, and Roadmaps...")
+    # TODO: Use LLM to rewrite CV covering gaps, generate CL, and build resource roadmap
+    mock_docs = GeneratedDocs(
+        job_id="job_1",
+        tailored_cv_markdown="# Tailored CV...",
+        cover_letter_markdown="Dear Hiring Manager...",
+        learning_roadmap=[{"topic": "vLLM basics", "url": "https://youtube.com/..."}]
+    )
+    return {"generated_docs": [mock_docs]}
+
+def human_review_node(state: AgentState):
+    """
+    This node doesn't do much automatically. It acts as a parking lot.
+    The graph will INTERRUPT before this node, waiting for UI input.
+    """
+    print("🛑 Paused for Human Review. Waiting for user feedback...")
+    # When resumed, the state will update with user_feedback
+    if "rebuild" in state.get("user_feedback", "").lower():
+        print("User requested a rebuild. Sending back to document generator.")
+    return {}
+
+def auto_apply_node(state: AgentState):
+    print(f"🚀 Initiating Auto-Apply sequence for approved jobs...")
+    # TODO: Implement browser automation (Selenium/Playwright/MultiOn) here
+    return {}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3. ROUTING & GRAPH CONSTRUCTION
+# ─────────────────────────────────────────────────────────────────────────────
+
+def route_after_review(state: AgentState) -> str:
+    feedback = state.get("user_feedback", "")
+    if "rebuild" in feedback.lower():
+        return "generate_documents" # Send back for edits
+    return "auto_apply" # Proceed to apply
+
+def build_job_agent():
+    builder = StateGraph(AgentState)
+    
+    # Add Nodes
+    builder.add_node("fetch_jobs", fetch_jobs_node)
+    builder.add_node("evaluate_single_job", evaluate_single_job_node)
+    builder.add_node("generate_documents", generate_documents_node)
+    builder.add_node("human_review", human_review_node)
+    builder.add_node("auto_apply", auto_apply_node)
+    
+    # Add Edges
+    builder.add_edge(START, "fetch_jobs")
+    
+    # Dynamic parallel processing: fetch_jobs -> parallel map -> generate_documents
+    builder.add_conditional_edges("fetch_jobs", prepare_parallel_evaluations, ["evaluate_single_job"])
+    builder.add_edge("evaluate_single_job", "generate_documents")
+    
+    builder.add_edge("generate_documents", "human_review")
+    
+    # Human-in-the-loop conditional routing
+    builder.add_conditional_edges("human_review", route_after_review, {
+        "generate_documents": "generate_documents",
+        "auto_apply": "auto_apply"
+    })
+    
+    builder.add_edge("auto_apply", END)
+    
+    # Compile the graph, setting a BREAKPOINT before the human_review node
+    # Note: checkpointer is required for interrupts to persist state
+    from langgraph.checkpoint.memory import MemorySaver
+    memory = MemorySaver()
+    
+    return builder.compile(checkpointer=memory, interrupt_before=["human_review"])
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. EXECUTION DEMO
+# ─────────────────────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    app = build_job_agent()
+    
+    initial_state = {
+        "base_cv": "Experienced Software Engineer...",
+        "preferences": {"roles": ["AI Engineer", "Product Manager"], "remote_only": True},
+        "user_feedback": ""
+    }
+    
+    thread = {"configurable": {"thread_id": "application_batch_1"}}
+    
+    print("\n--- Starting Pipeline ---")
+    # Run the graph until it hits the interrupt
+    for event in app.stream(initial_state, thread, stream_mode="values"):
+        pass 
+    
+    print("\n--- Pipeline Paused ---")
+    print("Graph execution stopped. This is where your Claude-like UI would display:")
+    print("1. The side-by-side CV and Cover Letter.")
+    print("2. The learning roadmap (videos, courses).")
+    print("3. The 10-dimension A-F grading report.")
+    
+    # Simulate the user hitting "Approve and Apply" in the UI
+    print("\n--- User Input Received ---")
+    user_input = {"user_feedback": "Looks great, apply to job_1"}
+    
+    # Update the state with the user's feedback and resume the graph
+    app.update_state(thread, user_input)
+    
+    print("\n--- Resuming Pipeline ---")
+    for event in app.stream(None, thread, stream_mode="values"):
+        pass 
+        
+    print("\n✅ Run Complete!")

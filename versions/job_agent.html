@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job AI Agent - React Prototype</title>
+    
+    <!-- React & ReactDOM (UMD Builds) -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    
+    <!-- Babel for in-browser JSX compilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- 🛑 CRITICAL FIX FOR BABEL RUNTIME ERROR 🛑 -->
+    <script>
+        // This forces Babel to use React.createElement instead of injecting rogue ES module imports
+        Babel.registerPreset('react-classic', {
+            presets: [
+                [Babel.availablePresets['react'], { runtime: 'classic' }]
+            ]
+        });
+    </script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 h-screen w-screen overflow-hidden flex flex-col">
+    <div id="root" class="h-full w-full"></div>
+
+    <!-- Note the data-presets="react-classic" attribute -->
+    <script type="text/babel" data-presets="react-classic">
+        const { useState, useEffect, useRef } = React;
+
+        // ─────────────────────────────────────────────────────────────────
+        // 1. INPUT SCREEN COMPONENT
+        // ─────────────────────────────────────────────────────────────────
+        function InputScreen({ onStart }) {
+            return (
+                <div className="h-full w-full flex items-center justify-center p-4 bg-slate-100 overflow-y-auto">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl p-8 border border-slate-200">
+                        <div className="flex items-center justify-center gap-3 mb-8">
+                            <div className="w-12 h-12 rounded-xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-200">
+                                <i className="fa-solid fa-robot text-white text-2xl"></i>
+                            </div>
+                            <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Job AI Agent</h1>
+                        </div>
+
+                        <div className="space-y-6">
+                            {/* CV Upload */}
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-700">1. Upload Base CV</label>
+                                <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 cursor-pointer transition-colors">
+                                    <i className="fa-solid fa-cloud-arrow-up text-3xl text-indigo-400 mb-2"></i>
+                                    <span className="text-sm font-medium text-slate-600">Drag & Drop PDF/Docx or <span className="text-indigo-600">Browse</span></span>
+                                </div>
+                            </div>
+
+                            {/* Job Source */}
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-700 flex justify-between">
+                                    <span>2. Job Source (Global Links Supported)</span>
+                                    <span className="text-xs text-indigo-500 font-normal">Detects Visa/Sponsorship rules automatically</span>
+                                </label>
+                                <input type="text" placeholder="Paste LinkedIn, Greenhouse, Workday URL..." className="w-full border border-slate-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+                                <div className="text-center text-xs text-slate-400 font-bold my-2">OR PASTE RAW TEXT</div>
+                                <textarea rows="3" placeholder="Paste raw Job Description here if the site blocks bots..." className="w-full border border-slate-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none custom-scrollbar"></textarea>
+                            </div>
+
+                            <button onClick={onStart} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl shadow-lg transition-transform active:scale-[0.98] flex justify-center items-center gap-2">
+                                <i className="fa-solid fa-bolt"></i> Extract, Evaluate & Generate
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // 2. LOADING SCREEN COMPONENT
+        // ─────────────────────────────────────────────────────────────────
+        function LoadingScreen({ onComplete }) {
+            const [step, setStep] = useState(0);
+            const steps = [
+                "Scraping Job URL & Bypassing Bot Protection...",
+                "Evaluating CV against 12 Dimensions...",
+                "Rewriting ATS-Optimized Bullet Points...",
+                "Searching Web for 15-20 Skill Resources...",
+                "Drafting Cover Letter & Coach Prep Plan..."
+            ];
+
+            useEffect(() => {
+                const interval = setInterval(() => {
+                    setStep(s => {
+                        if (s >= steps.length - 1) {
+                            clearInterval(interval);
+                            setTimeout(onComplete, 800);
+                            return s;
+                        }
+                        return s + 1;
+                    });
+                }, 1200);
+                return () => clearInterval(interval);
+            }, []);
+
+            return (
+                <div className="h-full w-full flex flex-col items-center justify-center p-4 bg-slate-900 text-white">
+                    <i className="fa-solid fa-circle-notch fa-spin text-5xl text-indigo-500 mb-8"></i>
+                    <h2 className="text-xl font-bold mb-4">{steps[step]}</h2>
+                    <div className="w-64 bg-slate-800 rounded-full h-2 overflow-hidden">
+                        <div className="bg-indigo-500 h-full transition-all duration-500 ease-out" style={{width: `${((step + 1) / steps.length) * 100}%`}}></div>
+                    </div>
+                </div>
+            )
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // 3. MAIN DASHBOARD COMPONENT
+        // ─────────────────────────────────────────────────────────────────
+        function Dashboard() {
+            const [leftTab, setLeftTab] = useState('ats');
+            const [rightTab, setRightTab] = useState('chat');
+            const [chatInput, setChatInput] = useState('');
+            const [messages, setMessages] = useState([
+                { role: 'agent', text: "I've tailored your CV and drafted a Cover Letter for the Stripe role. I noticed you lacked direct API Monetization experience, so I added some strategic keywords based on your SaaS background. What would you like to adjust?" }
+            ]);
+
+            const handleChatSend = () => {
+                if(!chatInput.trim()) return;
+                setMessages([...messages, 
+                    {role: 'user', text: chatInput}, 
+                    {role: 'agent', text: 'Updating the documents now based on your feedback... (This is a mock response)'}
+                ]);
+                setChatInput('');
+            };
+
+            // Realistic US-based Mock Data
+            const jobData = {
+                company: "Stripe",
+                title: "Senior Technical Product Manager",
+                overall: 82,
+                verdict: "YES - STRONG FIT",
+                dimensions: {
+                    "Tech Stack": "B", "Seniority": "A", "Salary Alignment": "A", "Remote/Visa": "A",
+                    "Company Stage": "B", "Domain Fit": "A", "Growth": "A", "Work-Life": "C",
+                    "Commute/TZ": "A", "ATS Keywords": "B", "Culture": "A", "Benefits": "A"
+                },
+                gaps: ["No direct experience with API Monetization engines", "Lacks hands-on SQL for Stripe data pipelines"],
+                strengths: ["Led 0-to-1 SaaS product launches", "Strong engineering background (Computer Science degree)"],
+                docs: {
+                    baseCV: "John Doe\nSeattle, WA\n\nEXPERIENCE\nProduct Manager, Salesforce\n- Led development of CRM features.\n- Worked with engineering teams to deliver SaaS tools.\n- Improved user retention by 15%.\n\nSKILLS\nAgile, Jira, Product Roadmap, Python.",
+                    tailoredCV: "John Doe\nSeattle, WA\n\nEXPERIENCE\nSenior Technical Product Manager, Salesforce\n- Spearheaded 0-to-1 development of enterprise SaaS CRM features, aligning directly with Stripe's focus on scalable merchant platforms.\n- Partnered with 15+ backend engineers to architect scalable API endpoints, reducing latency by 20%.\n- Drove a 15% increase in user retention through rigorous A/B testing and data-driven product roadmap execution.\n\nSKILLS\nAPI Design, Technical Product Management, Distributed Systems, SQL, SaaS Monetization, Agile.",
+                    coverLetter: "Dear Stripe Hiring Team,\n\nStripe's mission to increase the GDP of the internet requires infrastructure that scales effortlessly. With over 5 years of experience building technical SaaS products at Salesforce, I have consistently bridged the gap between complex backend engineering and frictionless merchant experiences.\n\nIn my previous role, I partnered with distributed engineering teams to design API endpoints that handled millions of daily requests. I am highly comfortable diving into technical architectures, and I am eager to bring this rigor to Stripe's payment infrastructure.\n\nBest,\nJohn Doe"
+                },
+                resources: [
+                    { type: "Free Course", title: "API Monetization Strategies", url: "#", cost: "Free" },
+                    { type: "Free Video", title: "Stripe API Architecture Breakdown", url: "#", cost: "Free" },
+                    { type: "Free Article", title: "SQL for Product Managers", url: "#", cost: "Free" },
+                    { type: "Paid ($12)", title: "Advanced SQL Bootcamp", url: "#", cost: "$12" },
+                    { type: "Paid ($19)", title: "Technical PM Interview Prep", url: "#", cost: "$19" }
+                ],
+                coach: {
+                    salary: "TARGET ASK: $175,000 Base + Equity.\nJustification: You meet 82% of the criteria and bring strong SaaS experience. Walk-away number: $155,000.",
+                    questions: "Q1: Tell me about a time you had to make a technical trade-off for a product launch.\nHINT: Stripe values shipping fast but reliably. Discuss a specific API design choice.",
+                    plan: "WEEK 1: Brush up on SQL Window functions and Stripe's developer documentation.\nWEEK 2: Practice technical system design questions focusing on payment gateways."
+                }
+            };
+
+            const renderGrade = (val) => {
+                const colors = { 'A': 'bg-green-100 text-green-800', 'B': 'bg-blue-100 text-blue-800', 'C': 'bg-yellow-100 text-yellow-800', 'D': 'bg-orange-100 text-orange-800', 'F': 'bg-red-100 text-red-800' };
+                return <span className={`px-2 py-0.5 rounded text-xs font-bold ${colors[val]}`}>{val}</span>;
+            };
+
+            return (
+                <div className="flex flex-col h-full w-full">
+                    {/* Header bar */}
+                    <div className="bg-white border-b shadow-sm p-4 lg:px-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 z-10 shrink-0">
+                        <div>
+                            <div className="flex flex-wrap items-center gap-2 mb-2">
+                                <h2 className="text-xl md:text-2xl font-bold text-slate-900">{jobData.company}</h2>
+                                <span className="text-slate-300">/</span>
+                                <h2 className="text-lg md:text-xl font-medium text-slate-600">{jobData.title}</h2>
+                                <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full ml-2">
+                                    <i className="fa-solid fa-check"></i> {jobData.verdict}
+                                </span>
+                            </div>
+                            
+                            {/* Scrollable Dimensions Grid for Mobile */}
+                            <div className="flex overflow-x-auto gap-4 custom-scrollbar pb-2 max-w-[100vw] md:max-w-4xl">
+                                {Object.entries(jobData.dimensions).map(([key, val]) => (
+                                    <div key={key} className="flex flex-col gap-1 min-w-[100px] shrink-0">
+                                        <span className="text-[10px] uppercase font-bold text-slate-400">{key}</span>
+                                        <div>{renderGrade(val)}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        <div className="flex w-full md:w-auto gap-2">
+                            <button className="flex-1 md:flex-none px-4 py-2 bg-white border border-slate-300 rounded-lg text-sm font-semibold hover:bg-slate-50 flex justify-center items-center gap-2">
+                                <i className="fa-solid fa-download"></i> Export PDFs
+                            </button>
+                            <button className="flex-1 md:flex-none px-6 py-2 bg-indigo-600 rounded-lg text-white text-sm font-bold shadow-md hover:bg-indigo-700 flex justify-center items-center gap-2">
+                                <i className="fa-solid fa-paper-plane"></i> Auto-Apply
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Main Content Area: Responsive Flex Layout */}
+                    <div className="flex flex-col lg:flex-row flex-1 min-h-0 bg-slate-100">
+                        
+                        {/* LEFT PANE: Document Viewer */}
+                        <div className="w-full lg:w-1/2 flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200 bg-white h-[50vh] lg:h-full shrink-0 lg:shrink">
+                            {/* Tabs */}
+                            <div className="flex border-b bg-slate-50 overflow-x-auto custom-scrollbar shrink-0">
+                                <button onClick={() => setLeftTab('ats')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap ${leftTab === 'ats' ? 'border-indigo-600 text-indigo-600 bg-white' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+                                    <i className="fa-solid fa-file-contract mr-2"></i> Tailored CV
+                                </button>
+                                <button onClick={() => setLeftTab('cl')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap ${leftTab === 'cl' ? 'border-indigo-600 text-indigo-600 bg-white' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+                                    <i className="fa-solid fa-envelope-open-text mr-2"></i> Cover Letter
+                                </button>
+                                <button onClick={() => setLeftTab('base')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap ${leftTab === 'base' ? 'border-indigo-600 text-indigo-600 bg-white' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+                                    <i className="fa-solid fa-file-lines mr-2"></i> Base CV
+                                </button>
+                            </div>
+                            
+                            {/* Document Content */}
+                            <div className="flex-1 p-4 md:p-6 overflow-y-auto custom-scrollbar">
+                                <div className="p-6 bg-white border border-slate-200 shadow-sm rounded-lg font-mono text-xs md:text-sm whitespace-pre-wrap text-slate-700 leading-relaxed min-h-full">
+                                    {leftTab === 'ats' && jobData.docs.tailoredCV}
+                                    {leftTab === 'cl' && jobData.docs.coverLetter}
+                                    {leftTab === 'base' && jobData.docs.baseCV}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* RIGHT PANE: Analysis & Chat */}
+                        <div className="w-full lg:w-1/2 flex flex-col bg-slate-50 h-[50vh] lg:h-full shrink-0 lg:shrink">
+                            {/* Tabs */}
+                            <div className="flex border-b bg-white overflow-x-auto custom-scrollbar shrink-0">
+                                <button onClick={() => setRightTab('chat')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap ${rightTab === 'chat' ? 'border-indigo-600 text-indigo-600 bg-slate-50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+                                    <i className="fa-solid fa-comments mr-2"></i> Chat Agent
+                                </button>
+                                <button onClick={() => setRightTab('roadmap')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap ${rightTab === 'roadmap' ? 'border-indigo-600 text-indigo-600 bg-slate-50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+                                    <i className="fa-solid fa-map-location-dot mr-2"></i> Gaps & Roadmap
+                                </button>
+                                <button onClick={() => setRightTab('coach')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap ${rightTab === 'coach' ? 'border-indigo-600 text-indigo-600 bg-slate-50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+                                    <i className="fa-solid fa-chalkboard-user mr-2"></i> Interview Coach
+                                </button>
+                            </div>
+
+                            {/* Right Pane Content */}
+                            <div className="flex-1 overflow-hidden relative flex flex-col">
+                                
+                                {rightTab === 'chat' && (
+                                    <div className="flex-1 flex flex-col w-full h-full">
+                                        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                                            {messages.map((m, i) => (
+                                                <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                                    <div className={`p-3 rounded-xl max-w-[85%] text-sm shadow-sm ${m.role === 'user' ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-white border text-slate-700 rounded-bl-none'}`}>
+                                                        {m.text}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="p-4 bg-white border-t shrink-0">
+                                            <div className="flex gap-2">
+                                                <input value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleChatSend()} placeholder="E.g. Make the cover letter more aggressive..." className="flex-1 border rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-indigo-500" />
+                                                <button onClick={handleChatSend} className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors">
+                                                    <i className="fa-solid fa-paper-plane"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {rightTab === 'roadmap' && (
+                                    <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-4">
+                                        <div className="p-4 bg-red-50 border border-red-100 rounded-xl">
+                                            <h3 className="font-bold text-sm text-red-800 mb-2"><i className="fa-solid fa-triangle-exclamation"></i> Gaps</h3>
+                                            <ul className="text-sm text-red-700 space-y-1 ml-5 list-disc">
+                                                {jobData.gaps.map((g, i) => <li key={i}>{g}</li>)}
+                                            </ul>
+                                        </div>
+                                        <div className="p-4 bg-green-50 border border-green-100 rounded-xl">
+                                            <h3 className="font-bold text-sm text-green-800 mb-2"><i className="fa-solid fa-shield-halved"></i> Strengths</h3>
+                                            <ul className="text-sm text-green-700 space-y-1 ml-5 list-disc">
+                                                {jobData.strengths.map((s, i) => <li key={i}>{s}</li>)}
+                                            </ul>
+                                        </div>
+                                        <h3 className="font-bold text-sm text-slate-800 pt-2 border-t">Learning Roadmap (Resources)</h3>
+                                        {jobData.resources.map((res, i) => (
+                                            <div key={i} className="p-3 bg-white border rounded-lg hover:border-indigo-400 cursor-pointer shadow-sm flex items-center justify-between">
+                                                <div>
+                                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${res.cost === 'Free' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}>{res.type}</span>
+                                                    <h4 className="font-semibold text-sm mt-1">{res.title}</h4>
+                                                </div>
+                                                <i className="fa-solid fa-arrow-up-right-from-square text-slate-400 text-xs"></i>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {rightTab === 'coach' && (
+                                    <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-4">
+                                        <div className="bg-white border rounded-xl shadow-sm p-4 border-l-4 border-l-green-500">
+                                            <h3 className="font-bold text-slate-800 mb-2 text-sm"><i className="fa-solid fa-money-bill-wave text-green-500"></i> Salary Strategy</h3>
+                                            <p className="text-sm text-slate-600 whitespace-pre-wrap">{jobData.coach.salary}</p>
+                                        </div>
+                                        <div className="bg-white border rounded-xl shadow-sm p-4 border-l-4 border-l-blue-500">
+                                            <h3 className="font-bold text-slate-800 mb-2 text-sm"><i className="fa-solid fa-comments text-blue-500"></i> Interview Questions</h3>
+                                            <p className="text-sm text-slate-600 whitespace-pre-wrap">{jobData.coach.questions}</p>
+                                        </div>
+                                        <div className="bg-white border rounded-xl shadow-sm p-4 border-l-4 border-l-purple-500">
+                                            <h3 className="font-bold text-slate-800 mb-2 text-sm"><i className="fa-regular fa-calendar-check text-purple-500"></i> 30-Day Prep Plan</h3>
+                                            <p className="text-sm text-slate-600 whitespace-pre-wrap">{jobData.coach.plan}</p>
+                                        </div>
+                                    </div>
+                                )}
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )
+        }
+
+        // Main App Controller
+        function App() {
+            const [view, setView] = useState('input'); // 'input', 'loading', 'dashboard'
+
+            return (
+                <React.Fragment>
+                    {view === 'input' && <InputScreen onStart={() => setView('loading')} />}
+                    {view === 'loading' && <LoadingScreen onComplete={() => setView('dashboard')} />}
+                    {view === 'dashboard' && <Dashboard />}
+                </React.Fragment>
+            );
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // Initialization
+        // ─────────────────────────────────────────────────────────────────
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
