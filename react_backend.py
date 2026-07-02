@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from langgraph.graph import StateGraph, END, START
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
 load_dotenv()
 
@@ -24,7 +25,6 @@ class JobInput(BaseModel):
     job_title: str
 
 class JobMetadata(BaseModel):
-    """Used for auto-extracting missing company and title"""
     company_name: str = Field(description="The name of the hiring company")
     job_title: str = Field(description="The exact title of the role")
 
@@ -40,13 +40,14 @@ class JobEvaluation(BaseModel):
     commute_timezone: Literal['A', 'B', 'C', 'D', 'F'] = 'C'
     ats_keyword_density: Literal['A', 'B', 'C', 'D', 'F'] = 'C'
     overall_score: int = Field(default=50)
-    hire_verdict: str = Field(default="PENDING")
+    hire_verdict: str = Field(default="Moderate Fit")
     gap_analysis: List[str] = Field(default=[])
     strengths: List[str] = Field(default=[])
 
 class GeneratedDocs(BaseModel):
     tailored_cv_markdown: str = Field(description="The full ATS optimized CV")
     cover_letter_markdown: str = Field(description="The full cover letter")
+    changes_made: List[str] = Field(description="List of specific changes made to optimize the CV", default=[])
     learning_roadmap: List[Dict[str, str]] = Field(default=[])
 
 class CoachOutput(BaseModel):
@@ -73,7 +74,7 @@ def get_llm(provider: str):
         return ChatOpenAI(model="gpt-4o-mini", temperature=0.1)
     elif provider == "gemini":
         from langchain_google_genai import ChatGoogleGenerativeAI
-        # Fixed model version to 3.0
+        # Updated to the requested 2.5 flash model
         return ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.1)
     elif provider == "local (llama.cpp)":
         from langchain_openai import ChatOpenAI
@@ -91,18 +92,12 @@ def get_llm(provider: str):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def extract_urls_and_scrape(raw_input: str) -> str:
-    """
-    Finds URLs in the text, cleans LinkedIn search URLs, and scrapes them using Jina Reader API.
-    """
     urls = re.findall(r'(https?://[^\s]+)', raw_input)
-    
     if not urls:
         return raw_input
         
     extracted_texts = []
-    
     for url in urls:
-        # CLEAN LINKEDIN SEARCH URLS
         if "linkedin.com/jobs/search" in url and "currentJobId=" in url:
             parsed = urlparse.urlparse(url)
             qs = urlparse.parse_qs(parsed.query)
@@ -111,34 +106,46 @@ def extract_urls_and_scrape(raw_input: str) -> str:
                 url = f"https://www.linkedin.com/jobs/view/{job_id}"
 
         try:
-            # Bypass blockers with Jina AI Reader
             jina_url = f"https://r.jina.ai/{url}"
             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
             response = requests.get(jina_url, headers=headers, timeout=15)
             response.raise_for_status()
             extracted_texts.append(f"\n--- Scraped Job Data from {url} ---\n{response.text}\n")
         except Exception as e:
-            # We raise this so the UI catches it and displays it as a Toast error
             raise ValueError(f"Failed to scrape URL ({url}). Error: {str(e)}")
             
     clean_original_text = re.sub(r'(https?://[^\s]+)', '', raw_input)
     return clean_original_text + "\n" + "".join(extracted_texts)
+
+def chat_with_agent(message: str, history: list, provider: str = "gemini"):
+    """Standalone function to power the UI Chat Agent."""
+    llm = get_llm(provider)
+    messages = [SystemMessage(content="You are Career OS, an expert AI career coach. Answer the user's questions about their job application, CV, or interview prep concisely and professionally. Use markdown formatting.")]
+    
+    # Load previous conversation
+    for msg in history:
+        if msg.get("role") == "user":
+            messages.append(HumanMessage(content=msg.get("content", "")))
+        elif msg.get("role") == "agent":
+            messages.append(AIMessage(content=msg.get("content", "")))
+            
+    messages.append(HumanMessage(content=message))
+    
+    try:
+        response = llm.invoke(messages)
+        return response.content
+    except Exception as e:
+        return f"I encountered an error connecting to the LLM: {str(e)}"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 4. LANGGRAPH NODES
 # ─────────────────────────────────────────────────────────────────────────────
 
 def extract_metadata_node(state: AgentState):
-    """
-    Scrapes the JD text. If company or title are missing, it uses a lightweight LLM call to extract them.
-    """
     job = state["jobs_to_process"][0]
-    
-    # 1. Scrape URLs immediately
     actual_jd = extract_urls_and_scrape(job.raw_text)
     job.raw_text = actual_jd
     
-    # 2. Auto-detect missing title/company
     if not job.company_name or not job.job_title:
         try:
             llm = get_llm(state["model_provider"])
@@ -147,15 +154,11 @@ def extract_metadata_node(state: AgentState):
                 ("human", "{jd}")
             ])
             chain = prompt | llm.with_structured_output(JobMetadata)
-            # Send only the first 3000 chars to save tokens on this quick check
             res = chain.invoke({"jd": actual_jd[:3000]})
             
-            if not job.company_name:
-                job.company_name = res.company_name
-            if not job.job_title:
-                job.job_title = res.job_title
+            if not job.company_name: job.company_name = res.company_name
+            if not job.job_title: job.job_title = res.job_title
         except Exception as e:
-            print(f"Auto-extraction failed: {e}")
             if not job.company_name: job.company_name = "Unknown Company"
             if not job.job_title: job.job_title = "Unknown Title"
 
@@ -166,23 +169,22 @@ def evaluate_node(state: AgentState):
     job = state["jobs_to_process"][0]
     
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are an expert technical recruiter. Grade the CV against the JD on the 12 specified dimensions (A-F). Provide an overall_score (0-100), hire_verdict, strengths, and gap_analysis."),
+        ("system", "You are an expert technical recruiter. Grade the CV against the JD on the 12 specified dimensions (A-F). Keep the hire_verdict constructive and encouraging (e.g., 'Strong Fit', 'Moderate Fit', 'Developing Match'). Avoid overly negative phrasing. Provide an overall_score (0-100), hire_verdict, strengths, and gap_analysis."),
         ("human", "CV:\n{cv}\n\nJD:\n{jd}")
     ])
     
-    # No more silent fallbacks. Will fail loudly and inform UI if schema is broken
     structured_llm = llm.with_structured_output(JobEvaluation)
     chain = prompt | structured_llm
     result = chain.invoke({"cv": state["base_cv"], "jd": job.raw_text})
-    
     return {"evaluations": [result]}
 
 def generate_node(state: AgentState):
     llm = get_llm(state["model_provider"])
     job = state["jobs_to_process"][0]
     evaluation = state["evaluations"][-1]
+    
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "Write an ATS-optimized tailored CV, a Cover Letter, and a learning_roadmap (list of dicts with 'type', 'topic', 'url') based on gaps. The URL can be '#' if unknown."),
+        ("system", "Write an ATS-optimized tailored CV, a Cover Letter, and a learning_roadmap. \nCRITICAL INSTRUCTIONS:\n1. For EACH identified gap, you MUST provide exactly 5 free resources and 2 paid resources in the learning roadmap.\n2. You MUST populate 'changes_made' with a list of specific optimizations you made to the CV."),
         ("human", "Job: {job}\nBase CV: {cv}\nGaps: {gaps}")
     ])
     
@@ -195,8 +197,9 @@ def coach_node(state: AgentState):
     llm = get_llm(state["model_provider"])
     job = state["jobs_to_process"][0]
     evaluation = state["evaluations"][-1]
+    
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "Generate interview_questions, salary_strategy, and prep_plan based on the candidate's gaps."),
+        ("system", "Generate interview_questions, salary_strategy, and prep_plan based on the candidate's gaps. CRITICAL FORMATTING: You MUST format the output as a markdown list. Use double line breaks (\\n\\n) between every single numbered question so they render correctly on separate lines."),
         ("human", "JD:\n{job}\nGaps: {gaps}")
     ])
     
