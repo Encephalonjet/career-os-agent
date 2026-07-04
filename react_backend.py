@@ -44,11 +44,16 @@ class JobEvaluation(BaseModel):
     gap_analysis: List[str] = Field(default=[])
     strengths: List[str] = Field(default=[])
 
+class LearningResource(BaseModel):
+    type: str = Field(description="Type/Cost of resource (e.g., Free Course, Paid Video, Free Article)")
+    topic: str = Field(description="The specific skill or topic covered")
+    url: str = Field(description="The exact URL to the resource. Must be a valid link.")
+
 class GeneratedDocs(BaseModel):
     tailored_cv_markdown: str = Field(description="The full ATS optimized CV")
     cover_letter_markdown: str = Field(description="The full cover letter")
     changes_made: List[str] = Field(description="List of specific changes made to optimize the CV", default=[])
-    learning_roadmap: List[Dict[str, str]] = Field(default=[])
+    learning_roadmap: List[LearningResource] = Field(default=[])
 
 class CoachOutput(BaseModel):
     salary_strategy: str = Field(default="")
@@ -74,7 +79,6 @@ def get_llm(provider: str):
         return ChatOpenAI(model="gpt-4o-mini", temperature=0.1)
     elif provider == "gemini":
         from langchain_google_genai import ChatGoogleGenerativeAI
-        # Updated to the requested 2.5 flash model
         return ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.1)
     elif provider == "local (llama.cpp)":
         from langchain_openai import ChatOpenAI
@@ -120,7 +124,16 @@ def extract_urls_and_scrape(raw_input: str) -> str:
 def chat_with_agent(message: str, history: list, provider: str = "gemini"):
     """Standalone function to power the UI Chat Agent."""
     llm = get_llm(provider)
-    messages = [SystemMessage(content="You are Career OS, an expert AI career coach. Answer the user's questions about their job application, CV, or interview prep concisely and professionally. Use markdown formatting.")]
+    
+    # UNRESTRICTED FIELD-AGNOSTIC SYSTEM PROMPT
+    system_prompt = (
+        "You are Career OS, a highly intelligent, expert AI Career Coach and Technical Assistant. "
+        "You are adaptable to ANY industry (Product Management, HR, Finance, Engineering, Sales, Marketing, Design, etc.). "
+        "You must provide expert-level guidance, answer technical/domain-specific questions, suggest learning resources, "
+        "and help the user upskill in their specific field. Use markdown formatting."
+    )
+    
+    messages = [SystemMessage(content=system_prompt)]
     
     # Load previous conversation
     for msg in history:
@@ -169,7 +182,7 @@ def evaluate_node(state: AgentState):
     job = state["jobs_to_process"][0]
     
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are an expert technical recruiter. Grade the CV against the JD on the 12 specified dimensions (A-F). Keep the hire_verdict constructive and encouraging (e.g., 'Strong Fit', 'Moderate Fit', 'Developing Match'). Avoid overly negative phrasing. Provide an overall_score (0-100), hire_verdict, strengths, and gap_analysis."),
+        ("system", "You are an expert technical recruiter. Grade the CV against the JD on the 12 specified dimensions (A-F). CRITICAL: If information (like salary or visa) is missing from the JD, default to 'C' (Unknown). Never fail a dimension unless explicitly contradicted. Keep the hire_verdict constructive and encouraging (e.g., 'Strong Fit', 'Moderate Fit', 'Developing Match'). Provide an overall_score (0-100), hire_verdict, strengths, and gap_analysis."),
         ("human", "CV:\n{cv}\n\nJD:\n{jd}")
     ])
     
@@ -183,8 +196,20 @@ def generate_node(state: AgentState):
     job = state["jobs_to_process"][0]
     evaluation = state["evaluations"][-1]
     
+    # STRICT EDITOR PROMPT FOR ATS CV GENERATION
+    system_instructions = (
+        "You are an Expert ATS Optimizer. DO NOT rewrite the entire CV. Act as an editor. Maintain the original structure and voice, and humanize any added content. "
+        "ONLY append or slightly modify existing bullet points to inject missing ATS keywords and quantifiable metrics "
+        "(percentages, dollar amounts, time saved). Do not over-quantify; make sure quantities are necessary and measurable. "
+        "Where only optimized words are needed, just add the words without over-exaggerating. If exact numbers aren't provided in the base CV, use reasonable contextual scale.\n"
+        "CRITICAL INSTRUCTIONS:\n"
+        "1. For EACH identified gap, you MUST provide exactly 5 free resources and 2 paid resources in the learning roadmap.\n"
+        "2. You MUST populate 'changes_made' with a list of specific optimizations. Tell the user EXACTLY which job role and bullet point you modified "
+        "(e.g., 'Added asynchronous programming to your 2023 Jireh Computers role')."
+    )
+    
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "Write an ATS-optimized tailored CV, a Cover Letter, and a learning_roadmap. \nCRITICAL INSTRUCTIONS:\n1. For EACH identified gap, you MUST provide exactly 5 free resources and 2 paid resources in the learning roadmap.\n2. You MUST populate 'changes_made' with a list of specific optimizations you made to the CV."),
+        ("system", system_instructions),
         ("human", "Job: {job}\nBase CV: {cv}\nGaps: {gaps}")
     ])
     

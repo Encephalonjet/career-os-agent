@@ -8,12 +8,13 @@
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Markdown Parser -->
+    <!-- Markdown Parser & Diff Library -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/diff_match_patch/20121119/diff_match_patch.js"></script>
     <script>
         Babel.registerPreset('react-classic', { presets: [[Babel.availablePresets['react'], { runtime: 'classic' }]] });
     </script>
-    <!-- Tailwind with Typography Plugin for Markdown Styling -->
+    <!-- Tailwind with Typography Plugin -->
     <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -33,8 +34,6 @@
             100% { opacity: 1; transform: translateX(0); }
         }
         .toast-animate { animation: toastSlide 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
-        
-        /* Markdown Customizations */
         .prose pre { background-color: #f8fafc; color: #334155; border: 1px solid #e2e8f0; }
         .prose h1, .prose h2, .prose h3 { color: #0f172a; margin-bottom: 0.5em; }
         .prose p { margin-bottom: 1em; }
@@ -49,38 +48,74 @@
 
         const API_BASE_URL = "http://127.0.0.1:8000/api";
 
-        // Reusable Markdown Renderer Component
         function MarkdownBlock({ content }) {
             if (!content) return <div className="text-slate-400 italic">No content available.</div>;
-            return (
-                <div 
-                    className="prose prose-sm prose-slate max-w-none" 
-                    dangerouslySetInnerHTML={{ __html: marked.parse(content) }} 
-                />
-            );
+            return <div className="prose prose-sm prose-slate max-w-none" dangerouslySetInnerHTML={{ __html: marked.parse(content) }} />;
         }
 
+        // TEXT DIFFING LOGIC: Wraps additions in pale green, THEN parses as Markdown to keep formatting perfect.
+        const getDiffHtml = (oldText, newText) => {
+            if (!oldText || !newText) return marked.parse(newText || "");
+            const dmp = new diff_match_patch();
+            const diffs = dmp.diff_main(oldText, newText);
+            dmp.diff_cleanupSemantic(diffs);
+            let combinedMarkdown = "";
+            diffs.forEach(part => {
+                const op = part[0];
+                const data = part[1];
+                if (op === 1) { 
+                    // Wrap inserted text, avoiding newlines so it doesn't break markdown blocks
+                    const wrapped = data.replace(/([^\n]+)/g, '<mark class="bg-green-100 text-green-900 rounded-sm px-0.5 shadow-sm">$1</mark>');
+                    combinedMarkdown += wrapped;
+                } else if (op === 0) { 
+                    combinedMarkdown += data;
+                }
+            });
+            return marked.parse(combinedMarkdown);
+        };
+
+        // EXPORT DOCUMENT LOGIC
+        const downloadDoc = (title, content, type) => {
+            if (!content) return;
+            if (type === 'pdf') {
+                const printWindow = window.open('', '', 'height=600,width=800');
+                printWindow.document.write('<html><head><title>' + title + '</title><style>body{font-family: sans-serif; line-height: 1.6; color: #333; padding: 20px;} h1, h2, h3 {color: #111;}</style></head><body>');
+                printWindow.document.write(marked.parse(content));
+                printWindow.document.write('</body></html>');
+                printWindow.document.close();
+                printWindow.focus();
+                setTimeout(() => { printWindow.print(); printWindow.close(); }, 250);
+            } else if (type === 'docx') {
+                const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>" + title + "</title></head><body>";
+                const footer = "</body></html>";
+                const html = header + marked.parse(content) + footer;
+                const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `${title.replace(/\s+/g, '_')}.doc`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+        };
+
         // ─────────────────────────────────────────────────────────────────
-        // 1. REUSABLE JOB INPUT FORM 
+        // 1. REUSABLE JOB INPUT FORM
         // ─────────────────────────────────────────────────────────────────
-        function JobInputForm({ onComplete, onCancel, isModal = false }) {
+        function JobInputForm({ onComplete, onCancel, globalCvFile, globalCvText, setGlobalCvFile, setGlobalCvText }) {
             const [isLoading, setIsLoading] = useState(false);
             const [loadingStep, setLoadingStep] = useState(0);
             const [errorMsg, setErrorMsg] = useState('');
             
+            const [useSavedCv, setUseSavedCv] = useState(!!globalCvFile || !!globalCvText);
             const [selectedCvFile, setSelectedCvFile] = useState(null);
             const [selectedJdFile, setSelectedJdFile] = useState(null);
             
             const [formData, setFormData] = useState({
-                base_cv_text: "",
-                company: "",
-                title: "",
-                jd_text: "",
-                raw_jd_fallback: "",
-                provider: "gemini",
-                workModel: "Any",
-                jobType: "Any",
-                visa: "Not Required (Citizen/PR)"
+                base_cv_text: "", company: "", title: "", jd_text: "",
+                raw_jd_fallback: "", provider: "gemini", workModel: "Any",
+                jobType: "Any", visa: "Not Required (Citizen/PR)"
             });
 
             const loadingMessages = [
@@ -100,24 +135,18 @@
                 }
             }, [errorMsg]);
 
-            // Dynamic Loader text cycler
             useEffect(() => {
                 let interval;
                 if (isLoading) {
                     interval = setInterval(() => {
-                        setLoadingStep(prev => {
-                            if (prev < loadingMessages.length - 1) return prev + 1;
-                            return prev;
-                        });
+                        setLoadingStep(prev => prev < loadingMessages.length - 1 ? prev + 1 : prev);
                     }, 4500);
-                } else {
-                    setLoadingStep(0);
-                }
+                } else setLoadingStep(0);
                 return () => clearInterval(interval);
             }, [isLoading]);
 
             const handleSubmit = async () => {
-                if (!selectedCvFile && !formData.base_cv_text) {
+                if (!useSavedCv && !selectedCvFile && !formData.base_cv_text) {
                     setErrorMsg("Please upload your Base CV or paste its text.");
                     return;
                 }
@@ -131,27 +160,30 @@
                 
                 try {
                     const payload = new FormData();
-                    if (selectedCvFile) payload.append("file", selectedCvFile);
+                    
+                    if (useSavedCv) {
+                        if (globalCvFile) payload.append("file", globalCvFile);
+                        payload.append("base_cv_text", globalCvText);
+                    } else {
+                        if (selectedCvFile) payload.append("file", selectedCvFile);
+                        payload.append("base_cv_text", formData.base_cv_text);
+                        setGlobalCvFile(selectedCvFile);
+                        setGlobalCvText(formData.base_cv_text);
+                    }
+                    
                     if (selectedJdFile) payload.append("jd_file", selectedJdFile);
                     
-                    payload.append("base_cv_text", formData.base_cv_text);
                     payload.append("company", formData.company);
                     payload.append("title", formData.title);
-                    
-                    const combined_jd = `${formData.jd_text}\n\n${formData.raw_jd_fallback}`.trim();
-                    payload.append("jd_text", combined_jd);
+                    payload.append("jd_text", `${formData.jd_text}\n\n${formData.raw_jd_fallback}`.trim());
                     payload.append("provider", formData.provider);
 
-                    const response = await fetch(`${API_BASE_URL}/evaluate`, {
-                        method: 'POST',
-                        body: payload 
-                    });
+                    const response = await fetch(`${API_BASE_URL}/evaluate`, { method: 'POST', body: payload });
 
                     if (!response.ok) {
                         const err = await response.json();
                         throw new Error(err.detail || "Failed to evaluate job. Check backend console.");
                     }
-                    
                     onComplete();
                 } catch (error) {
                     setErrorMsg(error.message);
@@ -168,42 +200,49 @@
                             <i className="fa-solid fa-bolt absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-indigo-600 text-xl"></i>
                         </div>
                         <h3 className="text-xl font-bold mb-2">Agent Active</h3>
-                        <p className="text-sm font-semibold text-indigo-600 animate-pulse bg-indigo-50 px-4 py-2 rounded-full shadow-inner">
-                            {loadingMessages[loadingStep]}
-                        </p>
+                        <p className="text-sm font-semibold text-indigo-600 animate-pulse bg-indigo-50 px-4 py-2 rounded-full shadow-inner">{loadingMessages[loadingStep]}</p>
                     </div>
                 );
             }
 
             return (
                 <div className="space-y-6 relative">
-                    {/* STICKY TOAST ERROR */}
                     {errorMsg && (
-                        <div className="fixed top-6 right-6 bg-red-600 text-white px-6 py-4 rounded-xl shadow-2xl z-50 flex items-center gap-4 toast-animate border-2 border-red-400">
+                        <div className="fixed top-6 right-6 bg-red-600 text-white px-6 py-4 rounded-xl shadow-2xl z-[100] flex items-center gap-4 toast-animate border-2 border-red-400">
                             <i className="fa-solid fa-circle-exclamation text-2xl"></i>
                             <div className="flex flex-col max-w-sm">
                                 <span className="font-bold text-sm">Action Failed</span>
                                 <span className="text-xs text-red-100">{errorMsg}</span>
                             </div>
-                            <button onClick={() => setErrorMsg('')} className="ml-2 hover:text-red-200 transition-colors">
-                                <i className="fa-solid fa-xmark text-xl"></i>
-                            </button>
+                            <button onClick={() => setErrorMsg('')} className="ml-2 hover:text-red-200 transition-colors"><i className="fa-solid fa-xmark text-xl"></i></button>
                         </div>
                     )}
 
                     <div className="space-y-2">
-                        <label className="text-sm font-bold text-slate-700">1. Upload Base CV <span className="text-red-500">*</span></label>
-                        <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 cursor-pointer transition-colors relative group">
-                            <input 
-                                type="file" accept=".pdf,.doc,.docx"
-                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
-                                onChange={(e) => { if (e.target.files[0]) setSelectedCvFile(e.target.files[0]); }}
-                            />
-                            <i className={`fa-solid fa-cloud-arrow-up text-3xl mb-2 transition-colors ${selectedCvFile ? 'text-green-500' : 'text-indigo-400 group-hover:text-indigo-600'}`}></i>
-                            <span className="text-sm font-medium text-slate-600">
-                                {selectedCvFile ? <span className="text-green-600 font-bold">{selectedCvFile.name} attached</span> : <span>Drag & Drop PDF/Docx or <span className="text-indigo-600">Browse</span></span>}
-                            </span>
-                        </div>
+                        <label className="text-sm font-bold text-slate-700">1. Base CV <span className="text-red-500">*</span></label>
+                        
+                        {useSavedCv ? (
+                            <div className="border-2 border-green-400 bg-green-50 rounded-xl p-4 flex justify-between items-center shadow-sm">
+                                <div className="flex items-center gap-3">
+                                    <div className="bg-white p-2 rounded-lg shadow-sm"><i className="fa-solid fa-file-circle-check text-green-600 text-xl"></i></div>
+                                    <div>
+                                        <p className="text-sm font-bold text-green-800">Using Saved CV</p>
+                                        <p className="text-xs text-green-600 font-medium">{globalCvFile ? globalCvFile.name : 'Raw text fallback loaded'}</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => setUseSavedCv(false)} className="text-xs font-bold text-slate-600 hover:text-slate-800 bg-white border border-slate-300 px-3 py-2 rounded-lg shadow-sm transition-colors">
+                                    Upload Different CV
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 cursor-pointer transition-colors relative group">
+                                <input type="file" accept=".pdf,.doc,.docx" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={(e) => { if (e.target.files[0]) setSelectedCvFile(e.target.files[0]); }} />
+                                <i className={`fa-solid fa-cloud-arrow-up text-3xl mb-2 transition-colors ${selectedCvFile ? 'text-green-500' : 'text-indigo-400 group-hover:text-indigo-600'}`}></i>
+                                <span className="text-sm font-medium text-slate-600">
+                                    {selectedCvFile ? <span className="text-green-600 font-bold">{selectedCvFile.name} attached</span> : <span>Drag & Drop PDF/Docx or <span className="text-indigo-600">Browse</span></span>}
+                                </span>
+                            </div>
+                        )}
                     </div>
 
                     <hr className="border-slate-200" />
@@ -225,9 +264,7 @@
                             <div className="md:w-1/3 border-2 border-dashed border-slate-300 rounded-xl p-4 flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 cursor-pointer transition-colors relative">
                                 <input type="file" accept=".pdf,.doc,.docx,.txt" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={(e) => { if (e.target.files[0]) setSelectedJdFile(e.target.files[0]); }} />
                                 <i className={`fa-solid fa-file-contract text-2xl mb-1 ${selectedJdFile ? 'text-green-500' : 'text-slate-400'}`}></i>
-                                <span className="text-xs font-medium text-slate-600 text-center">
-                                    {selectedJdFile ? <span className="text-green-600 font-bold break-all">{selectedJdFile.name}</span> : <span>Upload JD Doc</span>}
-                                </span>
+                                <span className="text-xs font-medium text-slate-600 text-center">{selectedJdFile ? <span className="text-green-600 font-bold break-all">{selectedJdFile.name}</span> : <span>Upload JD Doc</span>}</span>
                             </div>
                             <div className="md:w-2/3">
                                 <textarea rows="3" value={formData.jd_text} onChange={(e) => setFormData({...formData, jd_text: e.target.value})} placeholder="Or paste multiple Job URLs. The agent uses Jina AI to bypass blocks and auto-scrape them." className="w-full h-full border border-slate-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none custom-scrollbar bg-white"></textarea>
@@ -235,41 +272,22 @@
                         </div>
                     </div>
 
-                    {/* COLLAPSIBLE ADVANCED FILTERS */}
                     <details className="group border border-slate-200 rounded-xl bg-white shadow-sm overflow-hidden">
                         <summary className="flex items-center justify-between p-4 font-bold text-slate-800 cursor-pointer hover:bg-slate-50 transition-colors select-none">
-                            <div className="flex items-center gap-3">
-                                <div className="bg-indigo-100 text-indigo-600 p-1.5 rounded-lg"><i className="fa-solid fa-sliders text-sm"></i></div>
-                                Advanced Settings & Fallbacks
-                            </div>
+                            <div className="flex items-center gap-3"><div className="bg-indigo-100 text-indigo-600 p-1.5 rounded-lg"><i className="fa-solid fa-sliders text-sm"></i></div> Advanced Settings & Fallbacks</div>
                             <i className="fa-solid fa-chevron-down transition-transform duration-300 group-open:rotate-180 text-slate-400"></i>
                         </summary>
                         <div className="p-5 border-t border-slate-100 space-y-6 bg-slate-50/50">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Raw CV Text (Fallback)</label>
-                                    <textarea rows="3" value={formData.base_cv_text} onChange={(e) => setFormData({...formData, base_cv_text: e.target.value})} placeholder="Paste CV text if PDF upload fails..." className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none custom-scrollbar"></textarea>
-                                </div>
+                                {!useSavedCv && (
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Raw CV Text (Fallback)</label>
+                                        <textarea rows="3" value={formData.base_cv_text} onChange={(e) => setFormData({...formData, base_cv_text: e.target.value})} placeholder="Paste CV text if PDF upload fails..." className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none custom-scrollbar"></textarea>
+                                    </div>
+                                )}
                                 <div className="space-y-2">
                                     <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Raw JD Text (Fallback)</label>
                                     <textarea rows="3" value={formData.raw_jd_fallback} onChange={(e) => setFormData({...formData, raw_jd_fallback: e.target.value})} placeholder="Paste raw JD text if bot-blockers prevent URL scraping..." className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none custom-scrollbar"></textarea>
-                                </div>
-                            </div>
-                            <div className="space-y-3">
-                                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block border-b pb-2">Target Preferences</label>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div>
-                                        <label className="text-[10px] font-bold text-slate-500 block mb-1">Work Model</label>
-                                        <select value={formData.workModel} onChange={e => setFormData({...formData, workModel: e.target.value})} className="w-full border rounded-lg p-2 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"><option>Any</option><option>Remote</option><option>Hybrid</option><option>On-site</option></select>
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] font-bold text-slate-500 block mb-1">Job Type</label>
-                                        <select value={formData.jobType} onChange={e => setFormData({...formData, jobType: e.target.value})} className="w-full border rounded-lg p-2 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"><option>Any</option><option>Permanent / Full-Time</option><option>Contract / Freelance</option><option>Internship</option></select>
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] font-bold text-slate-500 block mb-1">Sponsorship / Visa</label>
-                                        <select value={formData.visa} onChange={e => setFormData({...formData, visa: e.target.value})} className="w-full border rounded-lg p-2 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"><option>Not Required (Citizen/PR)</option><option>Require Sponsorship</option><option>Only Visa-Supported Roles</option></select>
-                                    </div>
                                 </div>
                             </div>
                             <div className="space-y-2">
@@ -280,7 +298,7 @@
                     </details>
 
                     <div className="flex gap-4 pt-4">
-                        {isModal && <button onClick={onCancel} className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors">Cancel</button>}
+                        {onCancel && <button onClick={onCancel} className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors">Cancel</button>}
                         <button onClick={handleSubmit} className="flex-[2] bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 rounded-xl shadow-lg transition-transform active:scale-[0.98] flex justify-center items-center gap-2">
                             <i className="fa-solid fa-bolt text-yellow-400"></i> Run Auto-Extraction & Evaluate
                         </button>
@@ -332,41 +350,72 @@
         }
 
         // ─────────────────────────────────────────────────────────────────
-        // 3. AGENT WORKSPACE (WITH SIDEBAR & MARKDOWN & CHAT)
+        // 3. AGENT WORKSPACE
         // ─────────────────────────────────────────────────────────────────
         function AgentWorkspace({ jobData, onBack, allJobs, setActiveJob }) {
             const [leftTab, setLeftTab] = useState('ats');
             const [rightTab, setRightTab] = useState('roadmap');
             const [showDownloadMenu, setShowDownloadMenu] = useState(false);
-            const [isSidebarOpen, setIsSidebarOpen] = useState(true); // Toggle Sidebar
+            const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
-            // ATS CV Editing State
+            // Document Editing State
             const fullData = jobData.full_data || {};
             const docs = (fullData.generated_docs && fullData.generated_docs.length > 0) ? fullData.generated_docs[0] : {};
+            
             const [isEditingCv, setIsEditingCv] = useState(false);
             const [cvContent, setCvContent] = useState(docs.tailored_cv_markdown || "");
+            
+            const [isEditingCl, setIsEditingCl] = useState(false);
+            const [clContent, setClContent] = useState(docs.cover_letter_markdown || "");
 
-            // Chat Agent State
+            // Chat State & Auto-Scroll Ref
             const [chatInput, setChatInput] = useState("");
+            const chatEndRef = useRef(null);
             const [chatHistory, setChatHistory] = useState([
-                { role: "agent", content: "I've tailored your CV and drafted a Cover Letter for this role. The NLP scan confirmed Visa Sponsorship aligns with your profile. What would you like to adjust?" }
+                { role: "agent", content: "I've tailored your CV and drafted a Cover Letter for this role. What would you like to adjust or discuss? You can ask me technical questions or for specific learning resources." }
             ]);
             
             const evals = (fullData.evaluations && fullData.evaluations.length > 0) ? fullData.evaluations[0] : {};
             const coach = (fullData.coach_outputs && fullData.coach_outputs.length > 0) ? fullData.coach_outputs[0] : {};
             const jobInput = (fullData.jobs_to_process && fullData.jobs_to_process.length > 0) ? fullData.jobs_to_process[0] : {};
-            const changesMade = docs.changes_made || []; // Will populate in Phase B
+            const changesMade = docs.changes_made || [];
 
-            // Keep CV text synced if job changes
+            // Reset documents when switching jobs
             useEffect(() => {
                 setCvContent(docs.tailored_cv_markdown || "");
+                setClContent(docs.cover_letter_markdown || "");
                 setIsEditingCv(false);
+                setIsEditingCl(false);
             }, [jobData.id]);
 
-            const handleSendMessage = () => {
+            // Chat Auto-Scroll logic
+            useEffect(() => {
+                if (rightTab === 'chat' && chatEndRef.current) {
+                    chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+                }
+            }, [chatHistory, rightTab]);
+
+            const handleSendMessage = async () => {
                 if (!chatInput.trim()) return;
-                setChatHistory([...chatHistory, { role: "user", content: chatInput }, { role: "agent", content: "I am processing your request... (LLM backend wiring coming in Phase B!)" }]);
+                const userMessage = chatInput;
                 setChatInput("");
+                
+                const newHistory = [...chatHistory, { role: "user", content: userMessage }];
+                setChatHistory([...newHistory, { role: "agent", content: "Thinking..." }]);
+                
+                try {
+                    const res = await fetch(`${API_BASE_URL}/chat`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message: userMessage, history: chatHistory, provider: "gemini" })
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        setChatHistory([...newHistory, { role: "agent", content: data.reply }]);
+                    } else setChatHistory([...newHistory, { role: "agent", content: "⚠️ Backend error. Check server console." }]);
+                } catch(e) {
+                    setChatHistory([...newHistory, { role: "agent", content: "⚠️ Connection failed. Is FastAPI running?" }]);
+                }
             };
 
             const renderGrade = (val) => {
@@ -382,22 +431,16 @@
             };
 
             const dimensionsList = [
-                { key: 'Tech Stack', val: evals.tech_stack_match },
-                { key: 'Seniority', val: evals.role_seniority },
-                { key: 'Salary Align', val: evals.salary_alignment },
-                { key: 'Remote/Visa', val: evals.remote_policy },
-                { key: 'Co. Stage', val: evals.company_stage },
-                { key: 'Domain Fit', val: evals.domain_fit },
-                { key: 'Growth', val: evals.growth_opportunities },
-                { key: 'WLB', val: evals.work_life_balance },
-                { key: 'Timezone', val: evals.commute_timezone },
-                { key: 'Keywords', val: evals.ats_keyword_density },
+                { key: 'Tech Stack', val: evals.tech_stack_match }, { key: 'Seniority', val: evals.role_seniority },
+                { key: 'Salary Align', val: evals.salary_alignment }, { key: 'Remote/Visa', val: evals.remote_policy },
+                { key: 'Co. Stage', val: evals.company_stage }, { key: 'Domain Fit', val: evals.domain_fit },
+                { key: 'Growth', val: evals.growth_opportunities }, { key: 'WLB', val: evals.work_life_balance },
+                { key: 'Timezone', val: evals.commute_timezone }, { key: 'Keywords', val: evals.ats_keyword_density },
             ];
 
             return (
                 <div className="flex h-full bg-slate-50 relative min-w-0 w-full">
-                    
-                    {/* TOGGLEABLE SIDEBAR */}
+                    {/* SIDEBAR */}
                     <div className={`bg-white border-r border-slate-200 flex flex-col shrink-0 z-20 transition-all duration-300 ${isSidebarOpen ? 'w-64' : 'w-0 overflow-hidden'}`}>
                         <div className="p-3 border-b bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider flex justify-between items-center min-w-[256px]">
                             <span>Job Queue</span>
@@ -410,15 +453,13 @@
                                         <h3 className="font-bold text-xs text-slate-900 leading-tight">{job.title}</h3>
                                         <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${job.score >= 80 ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{job.score}</span>
                                     </div>
-                                    <p className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
-                                        <i className="fa-regular fa-building"></i> {job.company}
-                                    </p>
+                                    <p className="text-[11px] text-slate-500 font-semibold flex items-center gap-1"><i className="fa-regular fa-building"></i> {job.company}</p>
                                 </div>
                             ))}
                         </div>
                     </div>
 
-                    {/* MAIN WORKSPACE AREA */}
+                    {/* MAIN WORKSPACE */}
                     <div className="flex-1 flex flex-col h-full overflow-hidden">
                         <div className="bg-white border-b shadow-sm p-4 lg:px-6 z-10 shrink-0 flex flex-col gap-4">
                             <div className="flex justify-between items-start">
@@ -443,8 +484,9 @@
                                         </button>
                                         {showDownloadMenu && (
                                             <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden z-50">
-                                                <button className="w-full text-left px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 border-b flex items-center gap-2"><i className="fa-solid fa-file-pdf text-red-500"></i> PDF (.pdf)</button>
-                                                <button className="w-full text-left px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-2"><i className="fa-solid fa-file-word text-blue-500"></i> Word (.docx)</button>
+                                                {/* DOWNLOAD WIRED: Downloads the clean text format of the active tab */}
+                                                <button onMouseDown={() => { downloadDoc(jobData.company + '_' + leftTab, leftTab === 'cl' ? clContent : cvContent, 'pdf'); }} className="w-full text-left px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 border-b flex items-center gap-2"><i className="fa-solid fa-file-pdf text-red-500"></i> PDF (.pdf)</button>
+                                                <button onMouseDown={() => { downloadDoc(jobData.company + '_' + leftTab, leftTab === 'cl' ? clContent : cvContent, 'docx'); }} className="w-full text-left px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center gap-2"><i className="fa-solid fa-file-word text-blue-500"></i> Word (.doc)</button>
                                             </div>
                                         )}
                                     </div>
@@ -472,29 +514,44 @@
                                         <button onClick={() => setLeftTab('base')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap transition-colors ${leftTab === 'base' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}><i className="fa-solid fa-file-lines mr-2"></i> Base CV</button>
                                     </div>
                                     {leftTab === 'ats' && (
-                                        <button onClick={() => setIsEditingCv(!isEditingCv)} className={`mb-2 mr-4 px-3 py-1.5 text-xs font-bold rounded shadow-sm transition-colors ${isEditingCv ? 'bg-green-500 hover:bg-green-600 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'}`}>
-                                            <i className={`fa-solid ${isEditingCv ? 'fa-check' : 'fa-pen'} mr-1`}></i> {isEditingCv ? 'Save Edits' : 'Edit CV'}
-                                        </button>
+                                        <div className="flex gap-2 pb-2 pr-2">
+                                            <button onClick={() => setIsEditingCv(!isEditingCv)} className={`px-3 py-1.5 text-xs font-bold rounded shadow-sm transition-colors ${isEditingCv ? 'bg-green-500 hover:bg-green-600 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'}`}>
+                                                <i className={`fa-solid ${isEditingCv ? 'fa-check' : 'fa-pen'} mr-1`}></i> {isEditingCv ? 'Save Edits' : 'Edit CV'}
+                                            </button>
+                                        </div>
+                                    )}
+                                    {leftTab === 'cl' && (
+                                        <div className="flex gap-2 pb-2 pr-2">
+                                            <button onClick={() => setIsEditingCl(!isEditingCl)} className={`px-3 py-1.5 text-xs font-bold rounded shadow-sm transition-colors ${isEditingCl ? 'bg-green-500 hover:bg-green-600 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'}`}>
+                                                <i className={`fa-solid ${isEditingCl ? 'fa-check' : 'fa-pen'} mr-1`}></i> {isEditingCl ? 'Save Edits' : 'Edit Letter'}
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
                                 
                                 <div className="flex-1 overflow-y-auto custom-scrollbar bg-white flex">
                                     {leftTab === 'jd' && <div className="p-6 md:p-8"><MarkdownBlock content={jobInput.raw_text} /></div>}
-                                    {leftTab === 'cl' && <div className="p-6 md:p-8"><MarkdownBlock content={docs.cover_letter_markdown} /></div>}
                                     {leftTab === 'base' && <pre className="p-6 md:p-8 font-sans text-sm whitespace-pre-wrap text-slate-700 bg-slate-50 w-full h-full">{fullData.base_cv || "No Base CV available."}</pre>}
                                     
-                                    {/* ATS CV TAB WITH SPLIT HIGHLIGHTS PANEL */}
+                                    {/* COVER LETTER TAB */}
+                                    {leftTab === 'cl' && (
+                                        <div className="w-full p-6 md:p-8 relative">
+                                            {isEditingCl ? (
+                                                <textarea value={clContent} onChange={(e) => setClContent(e.target.value)} className="w-full h-full min-h-[500px] p-4 border-2 border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-mono custom-scrollbar bg-slate-50"/>
+                                            ) : (
+                                                <MarkdownBlock content={clContent} />
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* ATS CV TAB WITH AUTOMATIC DIFF MAPPING & HIGHLIGHTS PANEL */}
                                     {leftTab === 'ats' && (
                                         <React.Fragment>
-                                            <div className="w-3/4 p-6 md:p-8 border-r border-slate-100">
+                                            <div className="w-3/4 p-6 md:p-8 border-r border-slate-100 relative">
                                                 {isEditingCv ? (
-                                                    <textarea 
-                                                        value={cvContent} 
-                                                        onChange={(e) => setCvContent(e.target.value)} 
-                                                        className="w-full h-full min-h-[500px] p-4 border-2 border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-mono custom-scrollbar bg-slate-50"
-                                                    />
+                                                    <textarea value={cvContent} onChange={(e) => setCvContent(e.target.value)} className="w-full h-full min-h-[500px] p-4 border-2 border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-mono custom-scrollbar bg-slate-50"/>
                                                 ) : (
-                                                    <MarkdownBlock content={cvContent} />
+                                                    <div className="prose prose-sm prose-slate max-w-none" dangerouslySetInnerHTML={{ __html: getDiffHtml(fullData.base_cv, cvContent) }} />
                                                 )}
                                             </div>
                                             <div className="w-1/4 bg-slate-50 p-4">
@@ -506,7 +563,7 @@
                                                         ))}
                                                     </ul>
                                                 ) : (
-                                                    <p className="text-xs text-slate-400 italic">No specific highlights recorded yet. (Backend Phase B incoming!)</p>
+                                                    <p className="text-xs text-slate-400 italic">No highlights recorded yet.</p>
                                                 )}
                                             </div>
                                         </React.Fragment>
@@ -534,10 +591,12 @@
                                                             <i className={`fa-solid ${msg.role === 'user' ? 'fa-user' : 'fa-robot'} text-xs`}></i>
                                                         </div>
                                                         <div className={`p-3.5 rounded-2xl shadow-sm max-w-[85%] text-sm ${msg.role === 'user' ? 'bg-indigo-100 text-indigo-900 rounded-tr-none' : 'bg-white border border-slate-200 text-slate-700 rounded-tl-none'}`}>
-                                                            {msg.content}
+                                                            <MarkdownBlock content={msg.content} />
                                                         </div>
                                                     </div>
                                                 ))}
+                                                {/* Invisible div to anchor the auto-scroll */}
+                                                <div ref={chatEndRef} />
                                             </div>
                                             <div className="p-4 bg-white border-t border-slate-200 shrink-0">
                                                 <div className="relative flex items-center">
@@ -552,7 +611,6 @@
 
                                     {rightTab === 'roadmap' && (
                                         <div className="flex-1 overflow-y-auto p-4 md:p-5 custom-scrollbar space-y-5">
-                                            {/* MOVED: STRENGTHS FIRST */}
                                             <div className="p-4 bg-green-50 border border-green-100 rounded-xl shadow-sm">
                                                 <h3 className="font-bold text-sm text-green-800 mb-2 flex items-center gap-2"><i className="fa-solid fa-shield-halved"></i> Candidate Strengths</h3>
                                                 <ul className="text-xs text-green-700 space-y-1.5 ml-4 list-disc">
@@ -592,7 +650,7 @@
                                                                 )}
                                                             </div>
                                                         )) : (
-                                                            <div className="text-xs text-slate-500 p-2 italic">No resources populated yet. (Backend Phase B incoming!)</div>
+                                                            <div className="text-xs text-slate-500 p-2 italic">No resources populated yet.</div>
                                                         )}
                                                     </div>
                                                 </details>
@@ -628,9 +686,17 @@
         // 4. MAIN APP CONTROLLER
         // ─────────────────────────────────────────────────────────────────
         function App() {
+            // STRICT REQUIREMENT: Boot directly to the Input Form
             const [view, setView] = useState('input'); 
             const [activeJob, setActiveJob] = useState(null);
             const [jobs, setJobs] = useState([]);
+            
+            // Modal state for Add New Job without redirecting
+            const [showAddModal, setShowAddModal] = useState(false);
+            
+            // Global CV Persistence
+            const [globalCvFile, setGlobalCvFile] = useState(null);
+            const [globalCvText, setGlobalCvText] = useState("");
 
             const fetchJobs = async () => {
                 try {
@@ -646,7 +712,9 @@
                 return [];
             };
 
-            useEffect(() => { fetchJobs(); }, []);
+            useEffect(() => { 
+                fetchJobs(); 
+            }, []);
 
             const handleUpdateStatus = async (jobId, newStatus) => {
                 try {
@@ -662,10 +730,10 @@
             };
 
             return (
-                <div className="flex flex-col h-screen w-full bg-slate-50">
+                <div className="flex flex-col h-screen w-full bg-slate-50 relative">
                     <div className="h-16 border-b bg-slate-900 text-white flex items-center justify-between px-6 shrink-0 z-30 shadow-sm">
                         <div className="font-bold text-lg flex items-center gap-3">
-                            <button onClick={() => { setView('dashboard'); setActiveJob(null); }} className="p-1 hover:text-indigo-400 transition-colors md:hidden"><i className="fa-solid fa-bars"></i></button>
+                            <button onClick={() => { setActiveJob(null); }} className="p-1 hover:text-indigo-400 transition-colors md:hidden"><i className="fa-solid fa-bars"></i></button>
                             <div className="w-8 h-8 rounded bg-indigo-500 flex items-center justify-center shadow-lg"><i className="fa-solid fa-robot text-white text-sm"></i></div>
                             Career OS
                         </div>
@@ -673,7 +741,14 @@
                             <button onClick={() => { setView('dashboard'); setActiveJob(null); }} className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors flex items-center gap-2 ${view === 'dashboard' && !activeJob ? 'bg-slate-700 border-slate-600 text-white' : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300'}`}>
                                 <i className="fa-solid fa-table-columns"></i> <span className="hidden md:inline">Kanban Board</span>
                             </button>
-                            <button onClick={() => { setView('input'); setActiveJob(null); }} className={`px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-transform active:scale-95 flex items-center gap-2 ${view === 'input' ? 'bg-indigo-600 text-white' : 'bg-indigo-500 hover:bg-indigo-600 text-white'}`}>
+                            <button onClick={() => { 
+                                if (view === 'dashboard') {
+                                    setShowAddModal(true); 
+                                } else {
+                                    setView('input');
+                                    setActiveJob(null);
+                                }
+                            }} className={`px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-transform active:scale-95 flex items-center gap-2 ${view === 'input' && !showAddModal ? 'bg-indigo-600 text-white' : 'bg-indigo-500 hover:bg-indigo-600 text-white'}`}>
                                 <i className="fa-solid fa-plus"></i> <span className="hidden md:inline">Add New Job</span>
                             </button>
                         </div>
@@ -682,16 +757,22 @@
                     <div className="flex-1 overflow-hidden relative">
                         {view === 'input' && (
                             <div className="absolute inset-0 flex items-center justify-center p-4 bg-slate-100 overflow-y-auto custom-scrollbar">
-                                <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl p-6 md:p-8 border border-slate-200 my-auto">
+                                <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl p-6 md:p-8 border border-slate-200 my-auto relative">
                                     <div className="flex flex-col items-center justify-center mb-8">
                                         <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-slate-900 mb-2">Job Evaluation Agent</h1>
                                         <p className="text-slate-500 text-sm text-center">Upload your CV and target job details to generate an ATS-optimized match.</p>
                                     </div>
-                                    <JobInputForm onComplete={async () => {
-                                        const updatedJobs = await fetchJobs();
-                                        setActiveJob(updatedJobs[updatedJobs.length - 1]);
-                                        setView('dashboard');
-                                    }} />
+                                    <JobInputForm 
+                                        globalCvFile={globalCvFile}
+                                        globalCvText={globalCvText}
+                                        setGlobalCvFile={setGlobalCvFile}
+                                        setGlobalCvText={setGlobalCvText}
+                                        onComplete={async () => {
+                                            const updatedJobs = await fetchJobs();
+                                            setActiveJob(updatedJobs[updatedJobs.length - 1]);
+                                            setView('dashboard');
+                                        }} 
+                                    />
                                 </div>
                             </div>
                         )}
@@ -703,6 +784,33 @@
                                 ) : (
                                     <AgentWorkspace jobData={activeJob} allJobs={jobs} setActiveJob={setActiveJob} onBack={() => setActiveJob(null)} />
                                 )}
+                            </div>
+                        )}
+
+                        {/* ADD NEW JOB OVERLAY MODAL */}
+                        {showAddModal && view === 'dashboard' && (
+                            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
+                                <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl p-6 md:p-8 border border-slate-200 my-auto relative">
+                                    <button onClick={() => setShowAddModal(false)} className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition-colors">
+                                        <i className="fa-solid fa-xmark"></i>
+                                    </button>
+                                    <div className="flex flex-col items-center justify-center mb-8">
+                                        <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-slate-900 mb-2">Job Evaluation Agent</h1>
+                                        <p className="text-slate-500 text-sm text-center">Upload your CV and target job details to generate an ATS-optimized match.</p>
+                                    </div>
+                                    <JobInputForm 
+                                        onCancel={() => setShowAddModal(false)}
+                                        globalCvFile={globalCvFile}
+                                        globalCvText={globalCvText}
+                                        setGlobalCvFile={setGlobalCvFile}
+                                        setGlobalCvText={setGlobalCvText}
+                                        onComplete={async () => {
+                                            const updatedJobs = await fetchJobs();
+                                            setActiveJob(updatedJobs[updatedJobs.length - 1]);
+                                            setShowAddModal(false);
+                                        }} 
+                                    />
+                                </div>
                             </div>
                         )}
                     </div>
