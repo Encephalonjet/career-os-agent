@@ -56,9 +56,9 @@ class GeneratedDocs(BaseModel):
     learning_roadmap: List[LearningResource] = Field(default=[])
 
 class CoachOutput(BaseModel):
-    salary_strategy: str = Field(default="")
-    interview_questions: str = Field(default="")
-    prep_plan: str = Field(default="")
+    salary_strategy: str = Field(description="A concise 1-2 paragraph salary negotiation strategy.")
+    interview_questions: str = Field(description="Exactly 5 specific interview questions with brief sample answers, using simple markdown bullet points.")
+    prep_plan: str = Field(description="A concise 30-day prep plan using simple markdown bullet points.")
 
 class AgentState(TypedDict):
     base_cv: str
@@ -198,12 +198,17 @@ def generate_node(state: AgentState):
     
     # STRICT EDITOR PROMPT FOR ATS CV GENERATION
     system_instructions = (
-        "You are an Expert ATS Optimizer. DO NOT rewrite the entire CV. Act as an editor. Maintain the original structure and voice, and humanize any added content. "
+        "You are an Expert ATS Optimizer. DO NOT rewrite the entire CV. Act as an editor. Maintain your voice, and humanize any added content. "
+        "CRITICAL FORMATTING: You MUST place the candidate's Name, Job Title, Phone Number, and Email on strictly separate lines using double newlines (\\n\\n) at the very top of the document. Do not put them on a single line. "
+        "Reformat the extracted text into a beautiful, professional Markdown CV. You MUST use newlines. Place the Name, Title, and Contact Info on separate lines. "
+        "You MUST use Markdown bullet points (-) for all Experience and Skills. NEVER output a wall of text.\n"
         "ONLY append or slightly modify existing bullet points to inject missing ATS keywords and quantifiable metrics "
         "(percentages, dollar amounts, time saved). Do not over-quantify; make sure quantities are necessary and measurable. "
         "Where only optimized words are needed, just add the words without over-exaggerating. If exact numbers aren't provided in the base CV, use reasonable contextual scale.\n"
         "CRITICAL INSTRUCTIONS:\n"
-        "1. For EACH identified gap, you MUST provide exactly 5 free resources and 2 paid resources in the learning roadmap.\n"
+        "1. For EACH identified gap, you MUST provide exactly 5 free resources and 2 paid resources in the learning roadmap. "
+        "The topics MUST strictly relate to the specific skill gap required for THIS EXACT JOB ROLE. NEVER hallucinate unrelated industries. "
+        "If a specific URL isn't known, provide a highly relevant Coursera or edX search link.\n"
         "2. You MUST populate 'changes_made' with a list of specific optimizations. Tell the user EXACTLY which job role and bullet point you modified "
         "(e.g., 'Added asynchronous programming to your 2023 Jireh Computers role')."
     )
@@ -223,8 +228,15 @@ def coach_node(state: AgentState):
     job = state["jobs_to_process"][0]
     evaluation = state["evaluations"][-1]
     
+    system_prompt = (
+        "You are an expert career coach. Generate a concise salary strategy, exactly 5 interview questions, and a brief 30-day prep plan based on the candidate's gaps. "
+        "You MUST generate all responses exclusively in English"
+        "CRITICAL AVOID TIMEOUTS: Keep your text concise and directly to the point. "
+        "Use simple markdown bullet points (-). Do not use complex nested formatting, tables, or excessive line breaks that break JSON parsing."
+    )
+    
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "Generate interview_questions, salary_strategy, and prep_plan based on the candidate's gaps. CRITICAL FORMATTING: You MUST format the output as a markdown list. Use double line breaks (\\n\\n) between every single numbered question so they render correctly on separate lines."),
+        ("system", system_prompt),
         ("human", "JD:\n{job}\nGaps: {gaps}")
     ])
     

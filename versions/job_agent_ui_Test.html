@@ -53,7 +53,9 @@
             return <div className="prose prose-sm prose-slate max-w-none" dangerouslySetInnerHTML={{ __html: marked.parse(content) }} />;
         }
 
-        // TEXT DIFFING LOGIC: Wraps additions in pale green, THEN parses as Markdown to keep formatting perfect.
+        // TEXT DIFFING LOGIC (FIXED): Wraps ONLY alphanumeric words in the highlight span.
+        // This leaves Markdown formatting characters (#, *, \n, -) safely outside the HTML tag
+        // so that marked.parse() reads the structure perfectly.
         const getDiffHtml = (oldText, newText) => {
             if (!oldText || !newText) return marked.parse(newText || "");
             const dmp = new diff_match_patch();
@@ -64,8 +66,8 @@
                 const op = part[0];
                 const data = part[1];
                 if (op === 1) { 
-                    // Wrap inserted text, avoiding newlines so it doesn't break markdown blocks
-                    const wrapped = data.replace(/([a-zA-Z0-9_À-ÿ]+)/g, '<mark class="bg-green-100 text-green-900 rounded-sm px-0.5 shadow-sm">$1</mark>');
+                    // Wrap ONLY words, preserving spaces and markdown syntax elements.
+                    const wrapped = data.replace(/([a-zA-Z0-9_]+)/g, '<span class="bg-green-100 text-green-800 rounded-sm">$1</span>');
                     combinedMarkdown += wrapped;
                 } else if (op === 0) { 
                     combinedMarkdown += data;
@@ -278,44 +280,6 @@
                             <i className="fa-solid fa-chevron-down transition-transform duration-300 group-open:rotate-180 text-slate-400"></i>
                         </summary>
                         <div className="p-5 border-t border-slate-100 space-y-6 bg-slate-50/50">
-                            
-                            {/* TARGET PREFERENCES & FILTERS */}
-                            <div className="space-y-4">
-                                <h3 className="font-bold text-sm text-slate-800 flex items-center gap-2">
-                                    <i className="fa-solid fa-sliders text-indigo-500"></i> Target Preferences & Filters
-                                </h3>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-600">Work Model</label>
-                                        <select value={formData.workModel} onChange={(e) => setFormData({...formData, workModel: e.target.value})} className="w-full border border-slate-300 rounded-lg px-4 py-2 text-sm focus:ring-1 focus:ring-indigo-500 focus:outline-none bg-white font-medium">
-                                            <option value="Any">Any</option>
-                                            <option value="Remote">Remote</option>
-                                            <option value="Hybrid">Hybrid</option>
-                                            <option value="On-site">On-site</option>
-                                        </select>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-600">Job Type</label>
-                                        <select value={formData.jobType} onChange={(e) => setFormData({...formData, jobType: e.target.value})} className="w-full border border-slate-300 rounded-lg px-4 py-2 text-sm focus:ring-1 focus:ring-indigo-500 focus:outline-none bg-white font-medium">
-                                            <option value="Any">Any</option>
-                                            <option value="Full-time">Full-time</option>
-                                            <option value="Contract">Contract</option>
-                                            <option value="Part-time">Part-time</option>
-                                        </select>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-600">Sponsorship / Visa</label>
-                                        <select value={formData.visa} onChange={(e) => setFormData({...formData, visa: e.target.value})} className="w-full border border-slate-300 rounded-lg px-4 py-2 text-sm focus:ring-1 focus:ring-indigo-500 focus:outline-none bg-white font-medium">
-                                            <option value="Not Required (Citizen/PR)">Not Required (Citizen/PR)</option>
-                                            <option value="Required">Required</option>
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <hr className="border-slate-200" />
-                            
-                            {/* FALLBACKS */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {!useSavedCv && (
                                     <div className="space-y-2">
@@ -328,10 +292,8 @@
                                     <textarea rows="3" value={formData.raw_jd_fallback} onChange={(e) => setFormData({...formData, raw_jd_fallback: e.target.value})} placeholder="Paste raw JD text if bot-blockers prevent URL scraping..." className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none custom-scrollbar"></textarea>
                                 </div>
                             </div>
-
-                            {/* AI ENGINE */}
                             <div className="space-y-2">
-                                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block border-b border-slate-200 pb-2">AI Engine</label>
+                                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block border-b pb-2">AI Engine</label>
                                 <select value={formData.provider} onChange={(e) => setFormData({...formData, provider: e.target.value})} className="w-full border border-slate-300 rounded-lg px-4 py-2 text-sm focus:ring-1 focus:ring-indigo-500 focus:outline-none bg-white font-medium"><option value="gemini">Google Gemini (Recommended)</option><option value="openai">OpenAI (ChatGPT)</option><option value="local (llama.cpp)">Local Model (Llama.cpp via Tailscale)</option></select>
                             </div>
                         </div>
@@ -371,7 +333,7 @@
                                     <div key={job.id} onClick={() => onViewJob(job)} className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer">
                                         <div className="flex justify-between items-start mb-2">
                                             <h4 className="font-bold text-slate-800 leading-tight">{job.title}</h4>
-                                            <span className={`text-[10px] font-bold px-2 py-1 rounded ml-2 ${job.score >= 80 ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{job.score}/100</span>
+                                            <span className={`text-[10px] font-bold px-2 py-1 rounded ml-2 ${job.score >= 80 ? 'bg-green-100 text-green-700' : job.score >= 60 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>{job.score}/100</span>
                                         </div>
                                         <p className="text-xs font-semibold text-slate-500 mb-4">{job.company}</p>
                                         <div className="flex justify-between items-center pt-3 border-t border-slate-100" onClick={(e) => e.stopPropagation()}>
@@ -759,7 +721,7 @@
         // ─────────────────────────────────────────────────────────────────
         // 4. MAIN APP CONTROLLER
         // ─────────────────────────────────────────────────────────────────
-        function JobAgentApp() {
+        function App() {
             // STRICT REQUIREMENT: Boot directly to the Input Form
             const [view, setView] = useState('input'); 
             const [activeJob, setActiveJob] = useState(null);
@@ -893,7 +855,7 @@
         }
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<JobAgentApp />);
+        root.render(<App />);
     </script>
 </body>
 </html>
