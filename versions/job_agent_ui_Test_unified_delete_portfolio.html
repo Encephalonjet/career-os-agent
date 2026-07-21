@@ -71,7 +71,7 @@
                 const op = part[0];
                 const data = part[1];
                 if (op === 1) { 
-                    const wrapped = data.replace(/([a-zA-Z0-9_À-ÿ]+)/g, '\x3Cspan class="bg-green-100 text-green-800 rounded-sm"\x3E$1\x3C/span\x3E');
+                    const wrapped = data.replace(/([^\n]+)/g, '<mark class="bg-green-100 text-green-900 rounded-sm px-0.5 shadow-sm">$1</mark>');
                     combinedMarkdown += wrapped;
                 } else if (op === 0) { 
                     combinedMarkdown += data;
@@ -124,15 +124,15 @@
                 "Bypassing bot-blockers & fetching URLs...",
                 "Scraping job requirements...",
                 "Running 12-dimension LangGraph evaluation...",
-                "Analyzing skill gaps & candidate strengths...",
                 "Tailoring ATS-optimized CV...",
                 "Drafting personalized Cover Letter...",
+                "Coding Custom Portfolio Webpage...",
                 "Generating Interview prep plan..."
             ];
 
             useEffect(() => {
                 if (errorMsg) {
-                    const timer = setTimeout(() => setErrorMsg(''), 8000);
+                    const timer = setTimeout(() => setErrorMsg(''), 6000);
                     return () => clearTimeout(timer);
                 }
             }, [errorMsg]);
@@ -152,10 +152,9 @@
                 const isAuto = !!formData.title;
 
                 if (!isManual && !isAuto) {
-                    setErrorMsg("Please either provide a Job Description/URL (for manual evaluation) OR enter a Target Job Title (to auto-search).");
+                    setErrorMsg("Please either provide a Job Description/URL or enter a Target Job Title.");
                     return;
                 }
-
                 if (!useSavedCv && !selectedCvFile && !formData.base_cv_text) {
                     setErrorMsg("Please upload your Base CV or paste its text.");
                     return;
@@ -168,10 +167,6 @@
                     const cvTextToUse = useSavedCv ? globalCvText : formData.base_cv_text;
 
                     if (!isManual && isAuto) {
-                        if (!cvTextToUse && !selectedCvFile && !globalCvFile) {
-                            throw new Error("Auto-Search requires readable CV text. Please paste your CV text into the Fallback box, or run a manual evaluation first to save your CV profile.");
-                        }
-
                         const queryLocation = `${formData.location}`.trim();
                         const payload = new FormData();
                         
@@ -194,21 +189,15 @@
                         payload.append("job_type", formData.jobType);
                         payload.append("visa", formData.visa);
 
-                        const response = await fetch(`${API_BASE_URL}/auto-fetch`, {
-                            method: 'POST',
-                            body: payload
-                        });
+                        const response = await fetch(`${API_BASE_URL}/auto-fetch`, { method: 'POST', body: payload });
 
                         if (!response.ok) {
                             const err = await response.json();
                             throw new Error(err.detail || "Auto-Search failed.");
                         }
-                        
                         onComplete(); 
-                        
                     } else {
                         const payload = new FormData();
-                        
                         if (useSavedCv) {
                             if (globalCvFile) payload.append("file", globalCvFile);
                             payload.append("base_cv_text", globalCvText || "");
@@ -218,9 +207,7 @@
                             setGlobalCvFile(selectedCvFile);
                             setGlobalCvText(formData.base_cv_text);
                         }
-                        
                         if (selectedJdFile) payload.append("jd_file", selectedJdFile);
-                        
                         payload.append("company", formData.company);
                         payload.append("title", formData.title);
                         payload.append("jd_text", `${formData.jd_text}\n\n${formData.raw_jd_fallback}`.trim());
@@ -232,7 +219,7 @@
                             const err = await response.json();
                             throw new Error(err.detail || "Failed to evaluate job. Check backend console.");
                         }
-                        onComplete(); 
+                        onComplete();
                     }
                 } catch (error) {
                     setErrorMsg(error.message);
@@ -259,9 +246,9 @@
                     {errorMsg && (
                         <div className="fixed top-6 right-6 bg-red-600 text-white px-6 py-4 rounded-xl shadow-2xl z-[100] flex items-center gap-4 toast-animate border-2 border-red-400">
                             <i className="fa-solid fa-circle-exclamation text-2xl"></i>
-                            <div className="flex flex-col max-w-md">
-                                <span className="font-bold text-sm">Action Paused</span>
-                                <span className="text-xs text-red-100 leading-relaxed">{errorMsg}</span>
+                            <div className="flex flex-col max-w-sm">
+                                <span className="font-bold text-sm">Action Failed</span>
+                                <span className="text-xs text-red-100">{errorMsg}</span>
                             </div>
                             <button onClick={() => setErrorMsg('')} className="ml-2 hover:text-red-200 transition-colors"><i className="fa-solid fa-xmark text-xl"></i></button>
                         </div>
@@ -269,7 +256,6 @@
 
                     <div className="space-y-2">
                         <label className="text-sm font-bold text-slate-700">1. Base CV <span className="text-red-500">*</span></label>
-                        
                         {useSavedCv ? (
                             <div className="border-2 border-green-400 bg-green-50 rounded-xl p-4 flex justify-between items-center shadow-sm">
                                 <div className="flex items-center gap-3">
@@ -279,17 +265,13 @@
                                         <p className="text-xs text-green-600 font-medium">{globalCvFile ? globalCvFile.name : 'Raw text fallback loaded'}</p>
                                     </div>
                                 </div>
-                                <button onClick={() => setUseSavedCv(false)} className="text-xs font-bold text-slate-600 hover:text-slate-800 bg-white border border-slate-300 px-3 py-2 rounded-lg shadow-sm transition-colors">
-                                    Upload Different CV
-                                </button>
+                                <button onClick={() => setUseSavedCv(false)} className="text-xs font-bold text-slate-600 hover:text-slate-800 bg-white border border-slate-300 px-3 py-2 rounded-lg shadow-sm transition-colors">Upload Different CV</button>
                             </div>
                         ) : (
                             <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 cursor-pointer transition-colors relative group">
                                 <input type="file" accept=".pdf,.doc,.docx" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={(e) => { if (e.target.files[0]) setSelectedCvFile(e.target.files[0]); }} />
                                 <i className={`fa-solid fa-cloud-arrow-up text-3xl mb-2 transition-colors ${selectedCvFile ? 'text-green-500' : 'text-indigo-400 group-hover:text-indigo-600'}`}></i>
-                                <span className="text-sm font-medium text-slate-600">
-                                    {selectedCvFile ? <span className="text-green-600 font-bold">{selectedCvFile.name} attached</span> : <span>Drag & Drop PDF/Docx or <span className="text-indigo-600">Browse</span></span>}
-                                </span>
+                                <span className="text-sm font-medium text-slate-600">{selectedCvFile ? <span className="text-green-600 font-bold">{selectedCvFile.name} attached</span> : <span>Drag & Drop PDF/Docx or <span className="text-indigo-600">Browse</span></span>}</span>
                             </div>
                         )}
                     </div>
@@ -298,54 +280,21 @@
 
                     <div className="flex flex-col md:flex-row gap-4">
                         <div className="flex-1 space-y-2">
-                            <label className="text-sm font-bold text-slate-700">Company Name <span className="text-slate-400 font-normal ml-1">(Optional)</span></label>
-                            <input type="text" value={formData.company} onChange={(e) => setFormData({...formData, company: e.target.value})} placeholder="Auto-detected if left blank" className="w-full border border-slate-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white" />
+                            <label className="text-sm font-bold text-slate-700">Company Name</label>
+                            <input type="text" value={formData.company} onChange={(e) => setFormData({...formData, company: e.target.value})} placeholder="Optional" className="w-full border border-slate-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white" />
                         </div>
                         <div className="flex-1 space-y-2">
-                            <label className="text-sm font-bold text-slate-700">Target Job Title <span className="text-slate-400 font-normal ml-1">(Auto-Search)</span></label>
-                            <input type="text" value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} placeholder="e.g. AI Engineer" className="w-full border border-slate-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white" />
+                            <label className="text-sm font-bold text-slate-700">Target Job Title</label>
+                            <input type="text" value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} placeholder="Optional" className="w-full border border-slate-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white" />
                         </div>
                         <div className="flex-1 space-y-2">
                             <label className="text-sm font-bold text-slate-700">Location <span className="text-slate-400 font-normal ml-1">(Optional)</span></label>
-                            <input type="text" value={formData.location} onChange={(e) => setFormData({...formData, location: e.target.value})} placeholder="e.g. London, Remote US" className="w-full border border-slate-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white" />
+                            <input type="text" value={formData.location} onChange={(e) => setFormData({...formData, location: e.target.value})} placeholder="e.g. London" className="w-full border border-slate-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white" />
                         </div>
                     </div>
 
                     <div className="space-y-4">
-                        <h3 className="font-bold text-sm text-slate-800 flex items-center gap-2">
-                            <i className="fa-solid fa-sliders text-indigo-500"></i> Target Preferences & Filters
-                        </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="space-y-2">
-                                <label className="text-xs font-bold text-slate-600">Work Model</label>
-                                <select value={formData.workModel} onChange={(e) => setFormData({...formData, workModel: e.target.value})} className="w-full border border-slate-300 rounded-lg px-4 py-2 text-sm focus:ring-1 focus:ring-indigo-500 focus:outline-none bg-white font-medium">
-                                    <option value="Any">Any</option>
-                                    <option value="Remote">Remote</option>
-                                    <option value="Hybrid">Hybrid</option>
-                                    <option value="On-site">On-site</option>
-                                </select>
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-xs font-bold text-slate-600">Job Type</label>
-                                <select value={formData.jobType} onChange={(e) => setFormData({...formData, jobType: e.target.value})} className="w-full border border-slate-300 rounded-lg px-4 py-2 text-sm focus:ring-1 focus:ring-indigo-500 focus:outline-none bg-white font-medium">
-                                    <option value="Any">Any</option>
-                                    <option value="Full-time">Full-time</option>
-                                    <option value="Contract">Contract</option>
-                                    <option value="Part-time">Part-time</option>
-                                </select>
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-xs font-bold text-slate-600">Sponsorship / Visa</label>
-                                <select value={formData.visa} onChange={(e) => setFormData({...formData, visa: e.target.value})} className="w-full border border-slate-300 rounded-lg px-4 py-2 text-sm focus:ring-1 focus:ring-indigo-500 focus:outline-none bg-white font-medium">
-                                    <option value="Not Required (Citizen/PR)">Not Required (Citizen/PR)</option>
-                                    <option value="Required">Required</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="space-y-4">
-                        <label className="text-sm font-bold text-slate-700 block mb-1">Target Job Source <span className="text-slate-400 font-normal ml-1">(For Manual Evaluation Only)</span></label>
+                        <label className="text-sm font-bold text-slate-700 block mb-1">2. Target Job Source</label>
                         <div className="flex flex-col md:flex-row gap-4">
                             <div className="md:w-1/3 border-2 border-dashed border-slate-300 rounded-xl p-4 flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 cursor-pointer transition-colors relative">
                                 <input type="file" accept=".pdf,.doc,.docx,.txt" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={(e) => { if (e.target.files[0]) setSelectedJdFile(e.target.files[0]); }} />
@@ -353,32 +302,28 @@
                                 <span className="text-xs font-medium text-slate-600 text-center">{selectedJdFile ? <span className="text-green-600 font-bold break-all">{selectedJdFile.name}</span> : <span>Upload JD Doc</span>}</span>
                             </div>
                             <div className="md:w-2/3">
-                                <textarea rows="3" value={formData.jd_text} onChange={(e) => setFormData({...formData, jd_text: e.target.value})} placeholder="Or paste multiple Job URLs. The agent uses Jina AI to bypass blocks and auto-scrape them." className="w-full h-full border border-slate-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none custom-scrollbar bg-white"></textarea>
+                                <textarea rows="3" value={formData.jd_text} onChange={(e) => setFormData({...formData, jd_text: e.target.value})} placeholder="Or paste Job URLs here..." className="w-full h-full border border-slate-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none custom-scrollbar bg-white"></textarea>
                             </div>
                         </div>
                     </div>
 
                     <details className="group border border-slate-200 rounded-xl bg-white shadow-sm overflow-hidden">
                         <summary className="flex items-center justify-between p-4 font-bold text-slate-800 cursor-pointer hover:bg-slate-50 transition-colors select-none">
-                            <div className="flex items-center gap-3"><div className="bg-indigo-100 text-indigo-600 p-1.5 rounded-lg"><i className="fa-solid fa-layer-group text-sm"></i></div> Advanced Fallbacks & Engine</div>
+                            <div className="flex items-center gap-3"><div className="bg-indigo-100 text-indigo-600 p-1.5 rounded-lg"><i className="fa-solid fa-sliders text-sm"></i></div> Advanced Settings & Engine</div>
                             <i className="fa-solid fa-chevron-down transition-transform duration-300 group-open:rotate-180 text-slate-400"></i>
                         </summary>
-                        <div className="p-5 border-t border-slate-100 space-y-6 bg-slate-50/50">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {!useSavedCv && (
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Raw CV Text (Fallback)</label>
-                                        <textarea rows="3" value={formData.base_cv_text} onChange={(e) => setFormData({...formData, base_cv_text: e.target.value})} placeholder="Paste CV text if PDF upload fails... (Required if Auto-Searching without saved CV)" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none custom-scrollbar"></textarea>
-                                    </div>
-                                )}
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Raw JD Text (Fallback)</label>
-                                    <textarea rows="3" value={formData.raw_jd_fallback} onChange={(e) => setFormData({...formData, raw_jd_fallback: e.target.value})} placeholder="Paste raw JD text if bot-blockers prevent URL scraping..." className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none custom-scrollbar"></textarea>
-                                </div>
+                        <div className="p-5 border-t border-slate-100 space-y-4 bg-slate-50/50">
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-slate-600 block">AI Engine</label>
+                                <select value={formData.provider} onChange={(e) => setFormData({...formData, provider: e.target.value})} className="w-full border border-slate-300 rounded-lg px-4 py-2 text-sm focus:ring-1 focus:ring-indigo-500 focus:outline-none bg-white font-medium">
+                                    <option value="gemini">Google Gemini (Recommended)</option>
+                                    <option value="openai">OpenAI (ChatGPT)</option>
+                                    <option value="local (llama.cpp)">Local Model</option>
+                                </select>
                             </div>
                             <div className="space-y-2">
-                                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block border-b pb-2">AI Engine</label>
-                                <select value={formData.provider} onChange={(e) => setFormData({...formData, provider: e.target.value})} className="w-full border border-slate-300 rounded-lg px-4 py-2 text-sm focus:ring-1 focus:ring-indigo-500 focus:outline-none bg-white font-medium"><option value="gemini">Google Gemini (Recommended)</option><option value="openai">OpenAI (ChatGPT)</option><option value="local (llama.cpp)">Local Model (Llama.cpp via Tailscale)</option></select>
+                                <label className="text-xs font-bold text-slate-600 block">Raw JD Text (Fallback)</label>
+                                <textarea rows="3" value={formData.raw_jd_fallback} onChange={(e) => setFormData({...formData, raw_jd_fallback: e.target.value})} placeholder="Paste raw JD text if bot-blockers prevent URL scraping..." className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none custom-scrollbar"></textarea>
                             </div>
                         </div>
                     </details>
@@ -472,16 +417,17 @@
             const [showDownloadMenu, setShowDownloadMenu] = useState(false);
             const [isSidebarOpen, setIsSidebarOpen] = useState(true);
             const [hiddenSidebarJobs, setHiddenSidebarJobs] = useState([]);
-            const [showApplyModal, setShowApplyModal] = useState(false);
 
-            // --- PHASE 5: AUTO-APPLY STATE ---
+            // Phase 5 State
+            const [showApplyModal, setShowApplyModal] = useState(false);
             const [applyProfile, setApplyProfile] = useState(() => JSON.parse(localStorage.getItem('applyProfile')) || { name: '', email: '', phone: '', linkedin: '', job_url: '' });
             const [isLaunching, setIsLaunching] = useState(false);
 
             const fullData = jobData.full_data || {};
             const docs = (fullData.generated_docs && fullData.generated_docs.length > 0) ? fullData.generated_docs[0] : {};
             
-            // --- PHASE 5: EXTRACT OUTREACH DATA ---
+            // --- PORTFOLIO GENERATOR: Extract Data & Outreach ---
+            const portfolio = (fullData.portfolio_outputs && fullData.portfolio_outputs.length > 0) ? fullData.portfolio_outputs[0] : null;
             const outreach = (fullData.outreach_outputs && fullData.outreach_outputs.length > 0) ? fullData.outreach_outputs[0] : null;
 
             const [isEditingCv, setIsEditingCv] = useState(false);
@@ -493,7 +439,7 @@
             const [chatInput, setChatInput] = useState("");
             const chatEndRef = useRef(null);
             const [chatHistory, setChatHistory] = useState([
-                { role: "agent", content: "I've tailored your CV and drafted a Cover Letter for this role. What would you like to adjust or discuss? You can ask me technical questions or for specific learning resources." }
+                { role: "agent", content: "I've tailored your CV and drafted a Cover Letter for this role. What would you like to adjust or discuss?" }
             ]);
             
             const evals = (fullData.evaluations && fullData.evaluations.length > 0) ? fullData.evaluations[0] : {};
@@ -507,26 +453,21 @@
                 setIsEditingCv(false);
                 setIsEditingCl(false);
                 
-                // --- PHASE 5: PRE-FILL JOB URL FOR MODAL ---
                 const rawText = (fullData.jobs_to_process && fullData.jobs_to_process.length > 0) ? fullData.jobs_to_process[0].raw_text : "";
                 const urlMatch = rawText ? rawText.match(/https?:\/\/[^\s]+/) : null;
                 setApplyProfile(prev => ({ ...prev, job_url: urlMatch ? urlMatch[0] : "" }));
             }, [jobData.id]);
 
             useEffect(() => {
-                if (rightTab === 'chat' && chatEndRef.current) {
-                    chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
-                }
+                if (rightTab === 'chat' && chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
             }, [chatHistory, rightTab]);
 
             const handleSendMessage = async () => {
                 if (!chatInput.trim()) return;
                 const userMessage = chatInput;
                 setChatInput("");
-                
                 const newHistory = [...chatHistory, { role: "user", content: userMessage }];
                 setChatHistory([...newHistory, { role: "agent", content: "Thinking..." }]);
-                
                 try {
                     const res = await fetch(`${API_BASE_URL}/chat`, {
                         method: 'POST',
@@ -536,9 +477,9 @@
                     if (res.ok) {
                         const data = await res.json();
                         setChatHistory([...newHistory, { role: "agent", content: data.reply }]);
-                    } else setChatHistory([...newHistory, { role: "agent", content: "⚠️ Backend error. Check server console." }]);
+                    } else setChatHistory([...newHistory, { role: "agent", content: "⚠️ Backend error." }]);
                 } catch(e) {
-                    setChatHistory([...newHistory, { role: "agent", content: "⚠️ Connection failed. Is FastAPI running?" }]);
+                    setChatHistory([...newHistory, { role: "agent", content: "⚠️ Connection failed." }]);
                 }
             };
 
@@ -588,7 +529,7 @@
                 <div className="flex h-full bg-slate-50 relative min-w-0 w-full">
                     {/* SIDEBAR */}
                     <div className={`bg-white border-r border-slate-200 flex flex-col shrink-0 z-20 transition-all duration-300 ${isSidebarOpen ? 'w-64' : 'w-0 overflow-hidden'}`}>
-                        <div className="p-3 border-b bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between min-w-[256px]">
+                        <div className="p-3 border-b bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider flex justify-between items-center min-w-[256px]">
                             <span>Job Queue</span>
                             <span className="bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full">{visibleJobs.length} Saved</span>
                         </div>
@@ -599,9 +540,7 @@
                                         <span className="absolute top-4 right-4 h-2 w-2 rounded-full bg-emerald-500"></span>
                                     )}
                                     <div className="flex justify-between items-start mb-1 pr-3">
-                                        <h3 className="font-bold text-xs text-slate-900 leading-tight truncate flex items-center gap-1.5">
-                                            {job.title}
-                                        </h3>
+                                        <h3 className="font-bold text-xs text-slate-900 leading-tight truncate flex items-center gap-1.5">{job.title}</h3>
                                         <div className="flex items-center gap-2 shrink-0">
                                             <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ml-2 ${job.score >= 80 ? 'bg-green-50 text-green-700 border-green-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>{job.score}</span>
                                             <button onClick={(e) => { 
@@ -613,10 +552,7 @@
                                             </button>
                                         </div>
                                     </div>
-                                    
                                     <p className="text-[11px] text-slate-500 font-semibold flex items-center gap-1 mt-1 truncate ml-3.5"><i className="fa-regular fa-building"></i> {job.company}</p>
-                                    
-                                    {/* Sidebar Status Colored Dot & Text */}
                                     <div className="flex items-center gap-1.5 mt-2 ml-3.5">
                                         <span className={`w-2 h-2 rounded-full ${getStatusColor(job.status)}`}></span>
                                         <span className="text-[10px] text-slate-500 font-bold">{getStatusText(job.status)}</span>
@@ -638,12 +574,8 @@
                                         <i className="fa-solid fa-arrow-left"></i>
                                     </button>
                                     <div>
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <h2 className="text-xl md:text-2xl font-extrabold text-slate-900 flex items-center gap-3">
-                                                {jobData.company} <span className="text-slate-300 font-light">/</span> {jobData.title}
-                                            </h2>
-                                        </div>
-                                        <div className="flex items-center gap-2">
+                                        <h2 className="text-xl md:text-2xl font-extrabold text-slate-900 flex items-center gap-3">
+                                            {jobData.company} <span className="text-slate-300 font-light">/</span> {jobData.title}
                                             <span className={`text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1 border inline-block ${jobData.score >= 80 ? 'bg-green-50 text-green-700 border-green-200' : jobData.score >= 60 ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
                                                 <i className="fa-solid fa-check"></i> Match: {evals.overall_score || jobData.score}/100 
                                                 <span className="opacity-50 mx-1">|</span> Verdict: {evals.hire_verdict || "Evaluating..."}
@@ -653,7 +585,7 @@
                                                     <i className="fa-solid fa-globe"></i> {jobData.source}
                                                 </span>
                                             )}
-                                        </div>
+                                        </h2>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-3 relative shrink-0">
@@ -668,7 +600,6 @@
                                             </div>
                                         )}
                                     </div>
-                                    {/* --- PHASE 5: AUTO-APPLY OPEN MODAL BUTTON --- */}
                                     <button onClick={() => setShowApplyModal(true)} className="px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg text-sm shadow-sm hover:bg-indigo-700 flex items-center gap-2 transition-colors">
                                         <i className="fa-solid fa-paper-plane"></i> Auto-Apply
                                     </button>
@@ -686,7 +617,7 @@
                         </div>
 
                         <div className="flex flex-col lg:flex-row flex-1 min-h-0 bg-slate-100">
-                            {/* LEFT PANE (DOCUMENTS) */}
+                            {/* LEFT PANE (DOCUMENTS & PORTFOLIO) */}
                             <div className="w-full lg:w-3/5 flex flex-col border-r border-slate-200 bg-white h-full shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-10">
                                 <div className="flex border-b bg-white overflow-x-auto custom-scrollbar shrink-0 px-2 pt-2 justify-between items-end">
                                     <div className="flex">
@@ -694,6 +625,8 @@
                                         <button onClick={() => setLeftTab('ats')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap transition-colors ${leftTab === 'ats' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}><i className="fa-solid fa-file-contract mr-2"></i> ATS Optimized CV</button>
                                         <button onClick={() => setLeftTab('cl')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap transition-colors ${leftTab === 'cl' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}><i className="fa-solid fa-envelope-open-text mr-2"></i> Cover Letter</button>
                                         <button onClick={() => setLeftTab('base')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap transition-colors ${leftTab === 'base' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}><i className="fa-solid fa-file-lines mr-2"></i> Base CV</button>
+                                        {/* --- PORTFOLIO GENERATOR: Tab Header --- */}
+                                        {portfolio && <button onClick={() => setLeftTab('portfolio')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap transition-colors ${leftTab === 'portfolio' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}><i className="fa-solid fa-laptop-code mr-2"></i> Custom Portfolio</button>}
                                     </div>
                                     {leftTab === 'ats' && (
                                         <div className="flex gap-2 pb-2 pr-2">
@@ -712,11 +645,7 @@
                                 </div>
                                 
                                 <div className="flex-1 overflow-y-auto custom-scrollbar bg-white flex relative">
-                                    {leftTab === 'jd' && (
-                                        <div className="p-6 md:p-8 w-full">
-                                            <MarkdownBlock content={jobInput.raw_text} />
-                                        </div>
-                                    )}
+                                    {leftTab === 'jd' && <div className="p-6 md:p-8 w-full"><MarkdownBlock content={jobInput.raw_text} /></div>}
                                     {leftTab === 'base' && <pre className="p-6 md:p-8 font-sans text-sm whitespace-pre-wrap text-slate-700 bg-slate-50 w-full h-full">{fullData.base_cv || "No Base CV available."}</pre>}
                                     
                                     {leftTab === 'cl' && (
@@ -752,6 +681,27 @@
                                             </div>
                                         </React.Fragment>
                                     )}
+
+                                    {/* --- PORTFOLIO GENERATOR: Iframe Preview --- */}
+                                    {leftTab === 'portfolio' && portfolio && (
+                                        <div className="w-full h-full flex flex-col relative bg-slate-800">
+                                            <div className="flex justify-between items-center p-3 bg-slate-900 text-white shrink-0 border-b border-slate-700">
+                                                <span className="text-xs font-bold flex items-center gap-2 text-indigo-300"><i className="fa-solid fa-code"></i> Live HTML Preview</span>
+                                                <button onClick={() => {
+                                                    const blob = new Blob([portfolio.html_content], { type: 'text/html' });
+                                                    const url = URL.createObjectURL(blob);
+                                                    const link = document.createElement('a');
+                                                    link.href = url;
+                                                    link.download = `${jobData.company.replace(/\s+/g, '_')}_Portfolio.html`;
+                                                    link.click();
+                                                    URL.revokeObjectURL(url);
+                                                }} className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-sm transition-colors flex items-center gap-2">
+                                                    <i className="fa-solid fa-download"></i> Download Webpage
+                                                </button>
+                                            </div>
+                                            <iframe srcDoc={portfolio.html_content} className="w-full flex-1 bg-white" title="Portfolio Preview" sandbox="allow-scripts allow-same-origin" />
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -761,13 +711,12 @@
                                     <button onClick={() => setRightTab('roadmap')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap transition-colors ${rightTab === 'roadmap' ? 'border-indigo-600 text-indigo-600 bg-slate-50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}><i className="fa-solid fa-map-location-dot mr-2"></i> Gaps & Roadmap</button>
                                     <button onClick={() => setRightTab('chat')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap transition-colors ${rightTab === 'chat' ? 'border-indigo-600 text-indigo-600 bg-slate-50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}><i className="fa-solid fa-robot mr-2"></i> Chat Agent</button>
                                     <button onClick={() => setRightTab('coach')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap transition-colors ${rightTab === 'coach' ? 'border-indigo-600 text-indigo-600 bg-slate-50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}><i className="fa-solid fa-chalkboard-user mr-2"></i> Interview Coach</button>
-                                    {/* --- PHASE 5: OUTREACH TAB BUTTON --- */}
+                                    {/* --- OUTREACH TAB --- */}
                                     {outreach && <button onClick={() => setRightTab('outreach')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap transition-colors ${rightTab === 'outreach' ? 'border-indigo-600 text-indigo-600 bg-slate-50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}><i className="fa-solid fa-paper-plane mr-2"></i> Outreach</button>}
                                 </div>
 
                                 <div className="flex-1 overflow-hidden relative flex flex-col bg-slate-50">
                                     
-                                    {/* WIRED CHAT AGENT */}
                                     {rightTab === 'chat' && (
                                         <div className="flex flex-col h-full">
                                             <div className="flex-1 p-4 overflow-y-auto space-y-4 custom-scrollbar">
@@ -859,8 +808,8 @@
                                             </div>
                                         </div>
                                     )}
-
-                                    {/* --- PHASE 5: OUTREACH TAB CONTENT --- */}
+                                    
+                                    {/* --- OUTREACH TAB CONTENT --- */}
                                     {rightTab === 'outreach' && outreach && (
                                         <div className="flex-1 overflow-y-auto p-4 md:p-5 custom-scrollbar space-y-4">
                                             <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 border-l-4 border-l-emerald-500">
@@ -878,7 +827,6 @@
                         </div>
                     </div>
 
-                    {/* --- PHASE 5: AUTO-APPLY MODAL OVERLAY --- */}
                     {showApplyModal && (
                         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 overflow-y-auto">
                             <div className="bg-white rounded-2xl shadow-xl p-6 md:p-8 w-full max-w-md my-auto relative animate-in fade-in zoom-in duration-200">
@@ -894,7 +842,6 @@
                                 <p className="text-sm text-slate-600 mb-4 leading-relaxed">
                                     Confirm your profile details below. The agent will launch a browser, navigate to the portal, and map these details.
                                 </p>
-                                
                                 <div className="space-y-3 mb-6">
                                     <div>
                                         <label className="text-xs font-bold text-slate-700">Full Name</label>
@@ -917,25 +864,15 @@
                                         <input type="url" value={applyProfile.job_url} onChange={(e) => setApplyProfile({...applyProfile, job_url: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-slate-50" />
                                     </div>
                                 </div>
-
                                 <div className="flex gap-3 justify-end">
-                                    <button onClick={() => setShowApplyModal(false)} disabled={isLaunching} className="px-4 py-2 font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors disabled:opacity-50">
-                                        Cancel
-                                    </button>
+                                    <button onClick={() => setShowApplyModal(false)} disabled={isLaunching} className="px-4 py-2 font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors disabled:opacity-50">Cancel</button>
                                     <button onClick={async () => {
                                         localStorage.setItem('applyProfile', JSON.stringify(applyProfile));
                                         setIsLaunching(true);
                                         try {
-                                            const res = await fetch(`${API_BASE_URL}/jobs/${jobData.id}/auto-apply`, {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify(applyProfile)
-                                            });
+                                            const res = await fetch(`${API_BASE_URL}/jobs/${jobData.id}/auto-apply`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(applyProfile) });
                                             if(!res.ok) throw new Error("Failed to launch");
-                                            setTimeout(() => {
-                                                setIsLaunching(false);
-                                                setShowApplyModal(false);
-                                            }, 1000);
+                                            setTimeout(() => { setIsLaunching(false); setShowApplyModal(false); }, 1000);
                                         } catch(e) {
                                             alert("Error launching browser. Check server logs.");
                                             setIsLaunching(false);
@@ -948,7 +885,6 @@
                             </div>
                         </div>
                     )}
-
                 </div>
             );
         }
@@ -981,7 +917,7 @@
                 catch(e) { return []; }
             });
 
-            // NOTION SYNC STATE (Phase 4)
+            // NOTION SYNC STATE
             const [isSyncing, setIsSyncing] = useState(false);
             const [syncMessage, setSyncMessage] = useState(null);
 
@@ -1011,7 +947,6 @@
                     .catch(err => console.error("Failed to load saved CV profile", err));
             }, []);
 
-            // Clear Sync Message automatically after 6 seconds
             useEffect(() => {
                 if (syncMessage) {
                     const timer = setTimeout(() => setSyncMessage(null), 6000);
@@ -1050,7 +985,7 @@
                 localStorage.setItem('recentSearches', JSON.stringify(updated));
             };
 
-            // NOTION SYNC HANDLER (Phase 4)
+            // NOTION SYNC HANDLER
             const handleSyncNotion = async () => {
                 setIsSyncing(true);
                 setSyncMessage(null);
@@ -1147,18 +1082,16 @@
                             </div>
                         </div>
                         <div className="flex gap-3">
-                            {view === 'dashboard' && (
-                                <button onClick={handleSyncNotion} disabled={isSyncing} className={`px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-transform active:scale-95 flex items-center gap-2 ${isSyncing ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-black hover:bg-slate-800 text-white border border-slate-700'}`}>
-                                    {isSyncing ? <i className="fa-solid fa-spinner fa-spin text-slate-500"></i> : <NotionIcon />} <span className="hidden md:inline">{isSyncing ? 'Syncing...' : 'Sync to Notion'}</span>
-                                </button>
-                            )}
-                            
                             <button onClick={() => { setView('dashboard'); setActiveJob(null); }} className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors flex items-center gap-2 ${view === 'dashboard' && !activeJob ? 'bg-slate-700 border-slate-600 text-white' : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300'}`}>
                                 <i className="fa-solid fa-table-columns"></i> <span className="hidden md:inline">Kanban Board</span>
                             </button>
                             
                             {view === 'dashboard' && (
                                 <React.Fragment>
+                                    <button onClick={handleSyncNotion} disabled={isSyncing} className={`px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-transform active:scale-95 flex items-center gap-2 ${isSyncing ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-black hover:bg-slate-800 text-white border border-slate-700'}`}>
+                                        {isSyncing ? <i className="fa-solid fa-spinner fa-spin text-slate-500"></i> : <NotionIcon />} <span className="hidden md:inline">{isSyncing ? 'Syncing...' : 'Sync to Notion'}</span>
+                                    </button>
+
                                     <button onClick={() => setShowSearchModal(true)} className="px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-transform active:scale-95 flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white">
                                         <i className="fa-solid fa-magnifying-glass"></i> <span className="hidden md:inline">Auto-Search</span>
                                     </button>

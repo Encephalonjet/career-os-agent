@@ -1,9 +1,5 @@
 import traceback
 import io
-import os
-import json
-import re
-import threading
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.encoders import jsonable_encoder
@@ -13,9 +9,6 @@ import database
 # Phase 3 & 4 Imports
 from auto_fetch import run_auto_fetch_pipeline
 import notion_sync
-
-# PHASE 5: Import Playwright Autofill
-from autofill import autofill_job_application
 
 # File Parsing
 import pdfplumber
@@ -51,14 +44,6 @@ class ChatRequest(BaseModel):
     message: str
     history: list
     provider: str = "gemini"
-
-# --- PHASE 5: Auto-Apply Request Schema ---
-class AutoApplyRequest(BaseModel):
-    name: str
-    email: str
-    phone: str
-    linkedin: str
-    job_url: str
 
 @app.get("/api/jobs")
 def get_jobs():
@@ -214,56 +199,4 @@ async def evaluate_job(
         raise
     except Exception as e:
         print("ERROR IN EVALUATE:", traceback.format_exc())
-        raise HTTPException(status_code=500, detail=str(e))
-
-# --- PHASE 5: THREADED BROWSER LAUNCHER ---
-def launch_browser_thread(url, name, email, phone, linkedin, resume_path):
-    """Runs Playwright in a separate background thread to prevent FastAPI from freezing."""
-    try:
-        autofill_job_application(url, name, email, phone, linkedin, resume_path)
-    except Exception as e:
-        print(f"Autofill error: {e}")
-
-# --- PHASE 5: AUTO-APPLY ENDPOINT ---
-@app.post("/api/jobs/{job_id}/auto-apply")
-def auto_apply_endpoint(job_id: str, request: AutoApplyRequest):
-    try:
-        jobs = database.get_all_jobs()
-        job = next((j for j in jobs if j["id"] == job_id), None)
-        if not job:
-            raise HTTPException(status_code=404, detail="Job not found")
-        
-        # 1. Create a temporary text file containing the newly generated ATS CV
-        resume_path = None
-        full_data = job.get("full_data", {})
-        docs = full_data.get("generated_docs", [])
-        if docs:
-            cv_content = docs[0].get("tailored_cv_markdown", "")
-            # Save the tailored CV text temporarily to attach it in the browser
-            resume_path = os.path.abspath(f"workspace/CV_{job_id}.txt")
-            os.makedirs("workspace", exist_ok=True)
-            with open(resume_path, "w", encoding="utf-8") as f:
-                f.write(cv_content)
-
-        # 2. Extract the Job URL if the user didn't manually provide it
-        url_to_use = request.job_url
-        if not url_to_use:
-            raw_text = full_data.get("jobs_to_process", [{}])[0].get("raw_text", "")
-            urls = re.findall(r'(https?://[^\s]+)', raw_text)
-            if urls:
-                url_to_use = urls[0]
-            else:
-                raise HTTPException(status_code=400, detail="No Job URL found to apply to.")
-
-        # 3. Launch Playwright in a background thread so it doesn't freeze the React UI
-        thread = threading.Thread(target=launch_browser_thread, args=(
-            url_to_use, request.name, request.email, request.phone, request.linkedin, resume_path
-        ))
-        thread.start()
-
-        return {"status": "success", "message": "Browser launched"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        print("ERROR IN AUTO-APPLY:", traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))

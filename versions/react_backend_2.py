@@ -60,14 +60,6 @@ class CoachOutput(BaseModel):
     interview_questions: str = Field(description="Exactly 5 specific interview questions with brief sample answers, using simple markdown bullet points.")
     prep_plan: str = Field(description="A concise 30-day prep plan using simple markdown bullet points.")
 
-class OutreachOutput(BaseModel):
-    cold_email: str = Field(description="A highly personalized, concise cold email directed at the Hiring Manager or Recruiter referencing specific pain points.")
-    portfolio_strategy: str = Field(description="A customized mini-portfolio outline suggesting 1-2 specific projects from past experience (or quick weekend project ideas) that align with the target role.")
-
-# --- PORTFOLIO GENERATOR: New Schema ---
-class PortfolioOutput(BaseModel):
-    html_content: str = Field(description="A complete, valid, single-file HTML document using Tailwind CSS via CDN. Must be a fully responsive, modern portfolio tailored to the candidate's strengths and the specific job role. Do not use markdown backticks in the response.")
-
 class AgentState(TypedDict):
     base_cv: str
     model_provider: str 
@@ -75,8 +67,6 @@ class AgentState(TypedDict):
     evaluations: Annotated[List[JobEvaluation], operator.add]
     generated_docs: Annotated[List[GeneratedDocs], operator.add]
     coach_outputs: Annotated[List[CoachOutput], operator.add]
-    outreach_outputs: Annotated[List[OutreachOutput], operator.add]
-    portfolio_outputs: Annotated[List[PortfolioOutput], operator.add] # --- PORTFOLIO GENERATOR: State Update ---
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. LLM CONFIGURATION
@@ -132,8 +122,10 @@ def extract_urls_and_scrape(raw_input: str) -> str:
     return clean_original_text + "\n" + "".join(extracted_texts)
 
 def chat_with_agent(message: str, history: list, provider: str = "gemini"):
+    """Standalone function to power the UI Chat Agent."""
     llm = get_llm(provider)
     
+    # UNRESTRICTED FIELD-AGNOSTIC SYSTEM PROMPT
     system_prompt = (
         "You are Career OS, a highly intelligent, expert AI Career Coach and Technical Assistant. "
         "You are adaptable to ANY industry (Product Management, HR, Finance, Engineering, Sales, Marketing, Design, etc.). "
@@ -143,6 +135,7 @@ def chat_with_agent(message: str, history: list, provider: str = "gemini"):
     
     messages = [SystemMessage(content=system_prompt)]
     
+    # Load previous conversation
     for msg in history:
         if msg.get("role") == "user":
             messages.append(HumanMessage(content=msg.get("content", "")))
@@ -189,7 +182,7 @@ def evaluate_node(state: AgentState):
     job = state["jobs_to_process"][0]
     
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are an expert technical recruiter. Grade the CV against the JD on the 12 specified dimensions (A-F). CRITICAL: If information (like salary or visa) is missing from the JD, default to 'C' (Unknown). Never fail a dimension unless explicitly contradicted. Keep the hire_verdict constructive and encouraging. Provide an overall_score (0-100), hire_verdict, strengths, and gap_analysis."),
+        ("system", "You are an expert technical recruiter. Grade the CV against the JD on the 12 specified dimensions (A-F). CRITICAL: If information (like salary or visa) is missing from the JD, default to 'C' (Unknown). Never fail a dimension unless explicitly contradicted. Keep the hire_verdict constructive and encouraging (e.g., 'Strong Fit', 'Moderate Fit', 'Developing Match'). Provide an overall_score (0-100), hire_verdict, strengths, and gap_analysis."),
         ("human", "CV:\n{cv}\n\nJD:\n{jd}")
     ])
     
@@ -203,15 +196,21 @@ def generate_node(state: AgentState):
     job = state["jobs_to_process"][0]
     evaluation = state["evaluations"][-1]
     
+    # STRICT EDITOR PROMPT FOR ATS CV GENERATION
     system_instructions = (
         "You are an Expert ATS Optimizer. DO NOT rewrite the entire CV. Act as an editor. Maintain your voice, and humanize any added content. "
-        "CRITICAL FORMATTING: You MUST place the candidate's Name, Job Title, Phone Number, and Email on strictly separate lines using double newlines (\\n\\n) at the very top of the document. "
-        "Reformat the extracted text into a beautiful, professional Markdown CV. You MUST use newlines. "
-        "You MUST use Markdown bullet points (-) for all Experience and Skills.\n"
-        "ONLY append or slightly modify existing bullet points to inject missing ATS keywords and quantifiable metrics. "
+        "CRITICAL FORMATTING: You MUST place the candidate's Name, Job Title, Phone Number, and Email on strictly separate lines using double newlines (\\n\\n) at the very top of the document. Do not put them on a single line. "
+        "Reformat the extracted text into a beautiful, professional Markdown CV. You MUST use newlines. Place the Name, Title, and Contact Info on separate lines. "
+        "You MUST use Markdown bullet points (-) for all Experience and Skills. NEVER output a wall of text.\n"
+        "ONLY append or slightly modify existing bullet points to inject missing ATS keywords and quantifiable metrics "
+        "(percentages, dollar amounts, time saved). Do not over-quantify; make sure quantities are necessary and measurable. "
+        "Where only optimized words are needed, just add the words without over-exaggerating. If exact numbers aren't provided in the base CV, use reasonable contextual scale.\n"
         "CRITICAL INSTRUCTIONS:\n"
         "1. For EACH identified gap, you MUST provide exactly 5 free resources and 2 paid resources in the learning roadmap. "
-        "2. You MUST populate 'changes_made' with a list of specific optimizations."
+        "The topics MUST strictly relate to the specific skill gap required for THIS EXACT JOB ROLE. NEVER hallucinate unrelated industries. "
+        "If a specific URL isn't known, provide a highly relevant Coursera or edX search link.\n"
+        "2. You MUST populate 'changes_made' with a list of specific optimizations. Tell the user EXACTLY which job role and bullet point you modified "
+        "(e.g., 'Added asynchronous programming to your 2023 Jireh Computers role')."
     )
     
     prompt = ChatPromptTemplate.from_messages([
@@ -231,7 +230,9 @@ def coach_node(state: AgentState):
     
     system_prompt = (
         "You are an expert career coach. Generate a concise salary strategy, exactly 5 interview questions, and a brief 30-day prep plan based on the candidate's gaps. "
-        "Use simple markdown bullet points (-)."
+        "You MUST generate all responses exclusively in English"
+        "CRITICAL AVOID TIMEOUTS: Keep your text concise and directly to the point. "
+        "Use simple markdown bullet points (-). Do not use complex nested formatting, tables, or excessive line breaks that break JSON parsing."
     )
     
     prompt = ChatPromptTemplate.from_messages([
@@ -244,61 +245,6 @@ def coach_node(state: AgentState):
     result = chain.invoke({"job": job.raw_text, "gaps": "\n".join(evaluation.gap_analysis)})
     return {"coach_outputs": [result]}
 
-def outreach_node(state: AgentState):
-    llm = get_llm(state["model_provider"])
-    job = state["jobs_to_process"][0]
-    evaluation = state["evaluations"][-1]
-    
-    system_prompt = (
-        "You are an expert technical recruiter and portfolio strategist. "
-        "1. Write a highly tailored, concise cold email addressed to the Hiring Manager or Recruiter referencing specific pain points. "
-        "2. Generate a targeted Mini-Portfolio strategy."
-    )
-    
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        ("human", "JD:\n{job}\n\nCV:\n{cv}\n\nIdentified Strengths:\n{strengths}")
-    ])
-    
-    structured_llm = llm.with_structured_output(OutreachOutput)
-    chain = prompt | structured_llm
-    try:
-        result = chain.invoke({"job": job.raw_text, "cv": state["base_cv"], "strengths": "\n".join(evaluation.strengths)})
-    except Exception as e:
-        print(f"Outreach Generation Failed: {e}")
-        result = OutreachOutput(cold_email="Mock Email", portfolio_strategy="Mock Strategy")
-        
-    return {"outreach_outputs": [result]}
-
-# --- PORTFOLIO GENERATOR: New Node ---
-def portfolio_node(state: AgentState):
-    llm = get_llm(state["model_provider"])
-    job = state["jobs_to_process"][0]
-    evaluation = state["evaluations"][-1]
-    
-    system_prompt = (
-        "You are an expert Frontend Web Developer and UI/UX Designer. "
-        "Generate a complete, single-file HTML portfolio for the candidate using Tailwind CSS via a CDN link. "
-        "The portfolio MUST be heavily tailored to the target job description. "
-        "Include a beautiful Hero section, a Skills section highlighting the required tech stack, and a Projects section with placeholders relevant to the domain. "
-        "Return ONLY the raw HTML code. Do NOT wrap it in markdown blockquotes like ```html."
-    )
-    
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        ("human", "JD:\n{job}\n\nCandidate CV:\n{cv}\n\nCandidate Strengths:\n{strengths}")
-    ])
-    
-    structured_llm = llm.with_structured_output(PortfolioOutput)
-    chain = prompt | structured_llm
-    try:
-        result = chain.invoke({"job": job.raw_text, "cv": state["base_cv"], "strengths": "\n".join(evaluation.strengths)})
-    except Exception as e:
-        print(f"Portfolio Generation Failed: {e}")
-        result = PortfolioOutput(html_content="<div class='p-8 text-center text-red-500'>Portfolio failed to generate. Check server logs.</div>")
-        
-    return {"portfolio_outputs": [result]}
-
 # ─────────────────────────────────────────────────────────────────────────────
 # 5. BUILD & RUN AGENT
 # ─────────────────────────────────────────────────────────────────────────────
@@ -309,16 +255,12 @@ def build_job_agent():
     builder.add_node("evaluate", evaluate_node)
     builder.add_node("generate", generate_node)
     builder.add_node("coach", coach_node)
-    builder.add_node("outreach", outreach_node)
-    builder.add_node("portfolio", portfolio_node) # --- PORTFOLIO GENERATOR: Added to graph ---
     
     builder.add_edge(START, "extract_metadata")
     builder.add_edge("extract_metadata", "evaluate")
     builder.add_edge("evaluate", "generate")
     builder.add_edge("generate", "coach")
-    builder.add_edge("coach", "outreach")       
-    builder.add_edge("outreach", "portfolio")     # --- PORTFOLIO GENERATOR: Routed ---
-    builder.add_edge("portfolio", END)
+    builder.add_edge("coach", END)
     
     return builder.compile(checkpointer=MemorySaver())
 
@@ -330,9 +272,7 @@ def run_agent(cv_text: str, jd_text: str, company: str, title: str, provider: st
         "jobs_to_process": [JobInput(id="1", company_name=company, job_title=title, raw_text=jd_text)],
         "evaluations": [], 
         "generated_docs": [],
-        "coach_outputs": [],
-        "outreach_outputs": [],
-        "portfolio_outputs": [] # --- PORTFOLIO GENERATOR ---
+        "coach_outputs": []
     }
     config = {"configurable": {"thread_id": "api_session"}}
     for _ in agent.stream(initial_state, config=config):

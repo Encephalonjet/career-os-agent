@@ -1,0 +1,14 @@
+pycache/
+*.pyc
+*.pyo
+*.pyd
+.env
+.git/
+.gitignore
+workspace/
+node_modules/
+venv/
+env/
+jobs.db
+workspace/*.pdf
+workspace/*.txt

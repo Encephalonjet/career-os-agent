@@ -13,6 +13,7 @@ DB_FILE = "jobs.db"
 
 def init_db():
     """Initializes the database and creates the table if it doesn't exist."""
+    # Added timeout=10 to safely handle parallel concurrent thread writes
     conn = sqlite3.connect(DB_FILE, timeout=10)
     c = conn.cursor()
     c.execute('''
@@ -22,17 +23,11 @@ def init_db():
             title TEXT,
             status TEXT,
             score INTEGER,
-            full_data TEXT,
-            source TEXT
+            full_data TEXT
         )
     ''')
     
-    # Seamless migration: Add the source column if it doesn't exist in an older database version
-    try:
-        c.execute("ALTER TABLE applications ADD COLUMN source TEXT DEFAULT 'Manual'")
-    except sqlite3.OperationalError:
-        pass # Column already exists
-        
+    # NEW: Create a permanent table to store the user's base CV
     c.execute('''
         CREATE TABLE IF NOT EXISTS user_profile (
             id TEXT PRIMARY KEY,
@@ -42,14 +37,14 @@ def init_db():
     conn.commit()
     conn.close()
 
-def add_job(company: str, title: str, status: str, score: int, full_data: dict, source: str = "Manual"):
+def add_job(company: str, title: str, status: str, score: int, full_data: dict):
     """Saves a newly evaluated job to the database."""
     conn = sqlite3.connect(DB_FILE, timeout=10)
     c = conn.cursor()
     job_id = str(uuid.uuid4())
     c.execute(
-        "INSERT INTO applications (id, company, title, status, score, full_data, source) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (job_id, company, title, status, score, json.dumps(full_data), source)
+        "INSERT INTO applications (id, company, title, status, score, full_data) VALUES (?, ?, ?, ?, ?, ?)",
+        (job_id, company, title, status, score, json.dumps(full_data))
     )
     conn.commit()
     conn.close()
@@ -69,15 +64,12 @@ def get_all_jobs():
     
     jobs = []
     for row in rows:
-        # Safely handle older database rows that might not have a source yet
-        source_val = row["source"] if "source" in row.keys() else "Manual"
         jobs.append({
             "id": row["id"],
             "company": row["company"],
             "title": row["title"],
             "status": row["status"],
             "score": row["score"],
-            "source": source_val,
             "full_data": json.loads(row["full_data"])
         })
     return jobs
@@ -99,13 +91,14 @@ def delete_job(job_id: str):
     conn.close()
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PERMANENT USER PROFILE LOGIC
+# NEW: PERMANENT USER PROFILE LOGIC
 # ─────────────────────────────────────────────────────────────────────────────
 
 def save_user_cv(cv_text: str):
     """Permanently saves or updates the user's base CV."""
     conn = sqlite3.connect(DB_FILE, timeout=10)
     c = conn.cursor()
+    # INSERT OR REPLACE handles both new users and updating existing users effortlessly
     c.execute("INSERT OR REPLACE INTO user_profile (id, base_cv) VALUES ('default_user', ?)", (cv_text,))
     conn.commit()
     conn.close()

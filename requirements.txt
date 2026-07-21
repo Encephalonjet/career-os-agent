@@ -5,6 +5,8 @@ streamlit
 pydantic
 python-dotenv
 python-multipart
+
+# File Parsing
 pdfplumber
 python-docx
 
@@ -19,10 +21,15 @@ langchain-google-genai
 #llama-cpp-python==0.2.56
 
 # Web Scraping & Automation (Phase 3 & 5)
-
 playwright
 beautifulsoup4
+requests
+
+# Duckduckgo Search API (Phase 3)
+duckduckgo-search
 
 # Database & Integration (Phase 4)
-
 notion-client
+
+# MLOps & Observability (Phase 6)
+langsmith

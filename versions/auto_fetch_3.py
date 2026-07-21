@@ -10,14 +10,11 @@ Features:
 - Parallel Processing: Slashes processing time using ThreadPoolExecutor.
 *************************************************************************************
 """
-
 import requests
 import time
-import os
 import concurrent.futures
 from typing import List, Tuple
 from urllib.parse import urlparse
-from bs4 import BeautifulSoup
 from database import add_job, get_all_jobs
 from react_backend import run_agent
 from duckduckgo_search import DDGS
@@ -31,26 +28,18 @@ def get_source_from_url(url: str) -> str:
     if "myworkdayjobs.com" in url_lower: return "Workday"
     if "ashbyhq.com" in url_lower: return "Ashby"
     if "jobright.ai" in url_lower: return "Jobright"
-    if "workable.com" in url_lower: return "Workable"
-    if "smartrecruiters.com" in url_lower: return "SmartRecruiters"
-    if "builtin.com" in url_lower: return "BuiltIn"
-    if "wellfound.com" in url_lower or "angel.co" in url_lower: return "Wellfound"
-    if "indeed.com" in url_lower: return "Indeed"
-    if "glassdoor.com" in url_lower: return "Glassdoor"
-    if "ziprecruiter.com" in url_lower: return "ZipRecruiter"
-    if "simplyhired.com" in url_lower: return "SimplyHired"
     return "Web Scrape"
 
 def search_job_urls(job_title: str, location: str, job_board: str, max_results: int = 5) -> List[str]:
     """
-    Uses Jina AI to bypass bot-blockers, with robust DDG and Bing HTML Scraper failovers.
+    Uses Jina AI to bypass bot-blockers, with a DuckDuckGo failover.
     Dynamically adjusts the search string based on your target Job Board.
     """
     loc_display = location if location and location.strip() else "Anywhere"
     print(f"🔍 Searching for '{job_title}' roles in '{loc_display}'...", flush=True)
     
     board_mapping = {
-        "LinkedIn": "site:linkedin.com/jobs",
+        "LinkedIn": "site:linkedin.com",
         "Greenhouse": "site:greenhouse.io",
         "Lever": "site:lever.co",
         "Workday": "site:myworkdayjobs.com",
@@ -58,130 +47,74 @@ def search_job_urls(job_title: str, location: str, job_board: str, max_results: 
         "Jobright": "site:jobright.ai"
     }
     
+    if job_board in board_mapping:
+        boards = board_mapping[job_board]
+        print(f"🎯 Streamlining search specifically to: {job_board}", flush=True)
+    else:
+        boards = "site:linkedin.com OR site:greenhouse.io OR site:lever.co OR site:myworkdayjobs.com OR site:ashbyhq.com OR site:jobright.ai"
+        
+    # Strictly quote the location to prevent DuckDuckGo/Jina from ignoring it in favor of the title
     loc_query = f'"{location}"' if location and location.strip() else ""
+    query = f"{job_title} jobs {loc_query} {boards}".strip()
+    
+    search_url = f"https://s.jina.ai/{query.replace(' ', '%20')}"
+    
+    headers = {
+        'Accept': 'application/json',
+        'User-Agent': 'CareerOS-AutoFetcher/1.0'
+    }
+    
+    valid_domains = ["linkedin.com/jobs", "greenhouse.io", "lever.co", "myworkdayjobs.com", "ashbyhq.com", "jobright.ai"]
     urls = []
     
-    acceptable_domains = [
-        "linkedin.com", "greenhouse.io", "lever.co", "myworkdayjobs.com", 
-        "ashbyhq.com", "jobright.ai", "workable.com", "smartrecruiters.com", 
-        "builtin.com", "wellfound.com", "angel.co", "indeed.com", 
-        "glassdoor.com", "ziprecruiter.com", "simplyhired.com"
-    ]
-
-    
-    # *********************** JINA AI PRIMARY ATTEMPT **************************
-    
     try:
-        if job_board in board_mapping:
-            query = f"{job_title} jobs {loc_query} {board_mapping[job_board]}".strip()
-        else:
-            # Simplified query to avoid Jina 400 Bad Request limits on free tiers
-            query = f"{job_title} jobs {loc_query} linkedin OR greenhouse OR indeed".strip()
-            
-        search_url = f"https://s.jina.ai/{query.replace(' ', '%20')}"
-        headers = {'Accept': 'application/json', 'User-Agent': 'CareerOS-AutoFetcher/1.0'}
+        response = requests.get(search_url, headers=headers, timeout=20)
+        response.raise_for_status()
+        data = response.json()
         
-        jina_key = os.getenv("JINA_API_KEY")
-        if jina_key:
-            headers['Authorization'] = f"Bearer {jina_key}"
-
-        response = requests.get(search_url, headers=headers, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            for item in data.get('data', []):
-                url = item.get('url', '')
-                if url and url not in urls:
+        for item in data.get('data', []):
+            url = item.get('url', '')
+            if any(domain in url for domain in valid_domains):
+                if url not in urls:
                     urls.append(url)
-                if len(urls) >= max_results:
-                    break
-            if urls:
-                print(f"✅ Found {len(urls)} job URLs via Jina AI.", flush=True)
-                return urls[:max_results]
-    except Exception as e:
-        print(f"⚠️ Jina AI Request Failed. Initiating Fallback...", flush=True)
-
-    # *********************** FALLBACK 1: DUCKDUCKGO SEARCH LIBRARY **************************
-    
-    print("🔄 Switching to DuckDuckGo Search Fallback...", flush=True)
-    results = []
-    try:
-        ddgs = DDGS()
-        ddg_query = f"{job_title} jobs in {location}" if location else f"{job_title} jobs"
-        # Attempt sequential backends to bypass rate limits
-        try:
-            results = list(ddgs.text(ddg_query, max_results=15))
-        except:
-            try:
-                results = list(ddgs.text(ddg_query, backend="html", max_results=15))
-            except:
-                try:
-                    results = list(ddgs.text(ddg_query, backend="lite", max_results=15))
-                except:
-                    pass
-    except Exception:
-        pass
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # FALLBACK 2: RAW BING HTML SCRAPER (ULTIMATE FAILSAFE)
-    # ─────────────────────────────────────────────────────────────────────────
-    if not results:
-        print("🔄 DDG Library blocked or returned 0. Engaging Raw HTML Scraper...", flush=True)
-        try:
-            import urllib.parse
-            raw_query = urllib.parse.quote(f"{job_title} jobs {location}".strip())
-            html_url = f"https://www.bing.com/search?q={raw_query}"
-            html_headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-            html_res = requests.get(html_url, headers=html_headers, timeout=10)
-            soup = BeautifulSoup(html_res.text, 'html.parser')
-            for a in soup.find_all('a', href=True):
-                href = a['href']
-                if href.startswith('http') and 'bing.com' not in href and 'microsoft.com' not in href:
-                    results.append({'href': href})
-        except Exception as e:
-            print(f"⚠️ Raw Scraper failed: {e}", flush=True)
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # FILTER AND RETURN RESULTS
-    # ─────────────────────────────────────────────────────────────────────────
-    if results:
-        for r in results:
-            url = r.get('href', '')
-            if not url: continue
-            
-            url_lower = url.lower()
-            
-            if job_board == "All Supported Boards":
-                if any(domain in url_lower for domain in acceptable_domains) or "job" in url_lower or "careers" in url_lower:
-                    if url not in urls:
-                        urls.append(url)
-            else:
-                target_domain = board_mapping.get(job_board, "").replace("site:", "")
-                if target_domain and target_domain in url_lower:
-                    if url not in urls:
-                        urls.append(url)
-
             if len(urls) >= max_results:
                 break
-        
-        # Failsafe: if filters threw everything away, take ANY valid non-search link
-        if not urls:
-            print("⚠️ Strict filters yielded 0. Engaging failsafe to catch any available job links...", flush=True)
-            for r in results:
-                url = r.get('href', '')
-                if url:
-                    url_lower = url.lower() # BUGFIX: Correctly assigned inside the loop now
-                    if "duckduckgo.com" not in url_lower and "google.com" not in url_lower and "bing.com" not in url_lower:
+                
+        if urls:
+            print(f"✅ Found {len(urls)} job URLs via Jina AI.", flush=True)
+            return urls
+        else:
+            print("⚠️ Jina AI returned 0 valid results. Initiating Fallback...", flush=True)
+            
+    except requests.exceptions.HTTPError as http_err:
+        status_code = http_err.response.status_code if http_err.response is not None else "Unknown"
+        print(f"⚠️ Jina AI Blocked Request (Status: {status_code}). Initiating Fallback...", flush=True)
+    except Exception as e:
+        print(f"⚠️ Jina AI Request Failed: {e}. Initiating Fallback...", flush=True)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # DUCKDUCKGO FALLBACK LOGIC
+    # ─────────────────────────────────────────────────────────────────────────
+    print("🔄 Switching to DuckDuckGo Search Fallback...", flush=True)
+    try:
+        with DDGS() as ddgs:
+            results = ddgs.text(query, max_results=15)
+            urls = []
+            
+            if results:
+                for r in results:
+                    url = r.get('href', '')
+                    if any(domain in url for domain in valid_domains):
                         if url not in urls:
                             urls.append(url)
-                if len(urls) >= max_results:
-                    break
-
-    if urls:
-        print(f"✅ Found {len(urls)} job URLs.", flush=True)
-        return urls[:max_results]
-        
-    print("❌ All Search engines failed to return results.", flush=True)
-    return []
+                    if len(urls) >= max_results:
+                        break
+                        
+            print(f"✅ Found {len(urls)} job URLs via DuckDuckGo.", flush=True)
+            return urls
+    except Exception as fallback_e:
+        print(f"❌ Fallback also failed: {fallback_e}", flush=True)
+        return []
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PARALLEL PROCESSING LOGIC
@@ -240,6 +173,7 @@ def process_single_job(url: str, base_cv_text: str, target_title: str, location:
         print(f"❌ Failed to process {url}: {e}", flush=True)
         return None
 
+
 def run_auto_fetch_pipeline(base_cv_text: str, target_title: str, location: str, provider: str = "gemini", max_jobs: int = 5, job_board: str = "All Supported Boards", work_model: str = "Any", job_type: str = "Any", visa: str = "Any") -> Tuple[int, List[str]]:
     """
     Hunts for jobs, injects your filters into the LangGraph prompt, and saves them.
@@ -258,7 +192,6 @@ def run_auto_fetch_pipeline(base_cv_text: str, target_title: str, location: str,
     
     new_urls = []
     for url in found_urls:
-        # Simple check to avoid processing exact duplicate URLs
         if any(url in existing_text for existing_text in existing_urls):
             print(f"⏭️ Skipping {url} (Already in database)", flush=True)
         else:

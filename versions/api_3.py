@@ -1,21 +1,13 @@
 import traceback
 import io
-import os
-import json
-import re
-import threading
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 import database
 
-# Phase 3 & 4 Imports
+# Auto-Fetch Pipeline
 from auto_fetch import run_auto_fetch_pipeline
-import notion_sync
-
-# PHASE 5: Import Playwright Autofill
-from autofill import autofill_job_application
 
 # File Parsing
 import pdfplumber
@@ -46,19 +38,10 @@ app.add_middleware(
 class StatusUpdateRequest(BaseModel):
     status: str
 
-# Schema for Chat processing
 class ChatRequest(BaseModel):
     message: str
     history: list
     provider: str = "gemini"
-
-# --- PHASE 5: Auto-Apply Request Schema ---
-class AutoApplyRequest(BaseModel):
-    name: str
-    email: str
-    phone: str
-    linkedin: str
-    job_url: str
 
 @app.get("/api/jobs")
 def get_jobs():
@@ -74,7 +57,6 @@ def delete_job_endpoint(job_id: str):
     database.delete_job(job_id)
     return {"status": "success"}
 
-# Chat Endpoint wired to the LLM
 @app.post("/api/chat")
 def chat_endpoint(request: ChatRequest):
     try:
@@ -84,27 +66,14 @@ def chat_endpoint(request: ChatRequest):
         print("ERROR IN CHAT:", traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/profile/cv")
-def get_profile_cv():
-    return {"cv_text": database.get_user_cv()}
-
-# NOTION SYNC ENDPOINT (Phase 4)
-@app.post("/api/notion/sync")
-def sync_notion_endpoint():
-    try:
-        synced_amount = notion_sync.sync_to_notion()
-        return {"status": "success", "synced_count": synced_amount}
-    except Exception as e:
-        print("ERROR IN NOTION SYNC:", traceback.format_exc())
-        raise HTTPException(status_code=500, detail=str(e))
-
-# AUTO-FETCH ENDPOINT (Restored Phase 3 Logic)
+# New Endpoint for Phase 3: Auto-Search 
+# FIXED: Restored 'async def' so it runs on the main thread, forcing Uvicorn logs to print immediately!
 @app.post("/api/auto-fetch")
-def auto_fetch_endpoint(
+async def auto_fetch_endpoint(
     file: UploadFile = File(None),         
     base_cv_text: str = Form(""),
     target_title: str = Form(...),
-    location: str = Form(""), 
+    location: str = Form(...),
     provider: str = Form("gemini"),
     max_jobs: int = Form(5),
     job_board: str = Form("All Supported Boards"),
@@ -120,10 +89,7 @@ def auto_fetch_endpoint(
         if not extracted_cv_text.strip():
             raise HTTPException(status_code=400, detail="A Base CV is required. Please add a CV to your workspace first.")
             
-        # Permanent CV Storage
-        database.save_user_cv(extracted_cv_text)
-            
-        added_count, new_job_ids = run_auto_fetch_pipeline(
+        added_count = run_auto_fetch_pipeline(
             base_cv_text=extracted_cv_text,
             target_title=target_title,
             location=location,
@@ -134,7 +100,7 @@ def auto_fetch_endpoint(
             job_type=job_type,
             visa=visa
         )
-        return {"status": "success", "added_jobs": added_count, "new_job_ids": new_job_ids}
+        return {"status": "success", "added_jobs": added_count}
     except HTTPException:
         raise
     except Exception as e:
@@ -176,9 +142,6 @@ async def evaluate_job(
         if not extracted_cv_text.strip():
             raise HTTPException(status_code=400, detail="No CV text could be extracted or provided. Please provide a CV.")
 
-        # Permanent CV Storage
-        database.save_user_cv(extracted_cv_text)
-
         extracted_jd_text = parse_uploaded_file(jd_file)
         final_jd_text = f"{extracted_jd_text}\n\n{jd_text}".strip()
 
@@ -197,16 +160,15 @@ async def evaluate_job(
         score = getattr(evals, "overall_score", 0)
         
         processed_job = result_state.get("jobs_to_process", [{}])[0]
-        final_company = getattr(processed_job, 'company_name', company)
-        final_title = getattr(processed_job, 'job_title', title)
+        final_company = processed_job.company_name if hasattr(processed_job, 'company_name') else company
+        final_title = processed_job.job_title if hasattr(processed_job, 'job_title') else title
         
         job_id = database.add_job(
             company=final_company or "Unknown Company",
             title=final_title or "Unknown Title",
             status="To Apply",
             score=score,
-            full_data=jsonable_encoder(result_state),
-            source="Manual Upload" # Tag manual uploads
+            full_data=jsonable_encoder(result_state) 
         )
         return {"status": "success", "job_id": job_id}
         
@@ -214,56 +176,4 @@ async def evaluate_job(
         raise
     except Exception as e:
         print("ERROR IN EVALUATE:", traceback.format_exc())
-        raise HTTPException(status_code=500, detail=str(e))
-
-# --- PHASE 5: THREADED BROWSER LAUNCHER ---
-def launch_browser_thread(url, name, email, phone, linkedin, resume_path):
-    """Runs Playwright in a separate background thread to prevent FastAPI from freezing."""
-    try:
-        autofill_job_application(url, name, email, phone, linkedin, resume_path)
-    except Exception as e:
-        print(f"Autofill error: {e}")
-
-# --- PHASE 5: AUTO-APPLY ENDPOINT ---
-@app.post("/api/jobs/{job_id}/auto-apply")
-def auto_apply_endpoint(job_id: str, request: AutoApplyRequest):
-    try:
-        jobs = database.get_all_jobs()
-        job = next((j for j in jobs if j["id"] == job_id), None)
-        if not job:
-            raise HTTPException(status_code=404, detail="Job not found")
-        
-        # 1. Create a temporary text file containing the newly generated ATS CV
-        resume_path = None
-        full_data = job.get("full_data", {})
-        docs = full_data.get("generated_docs", [])
-        if docs:
-            cv_content = docs[0].get("tailored_cv_markdown", "")
-            # Save the tailored CV text temporarily to attach it in the browser
-            resume_path = os.path.abspath(f"workspace/CV_{job_id}.txt")
-            os.makedirs("workspace", exist_ok=True)
-            with open(resume_path, "w", encoding="utf-8") as f:
-                f.write(cv_content)
-
-        # 2. Extract the Job URL if the user didn't manually provide it
-        url_to_use = request.job_url
-        if not url_to_use:
-            raw_text = full_data.get("jobs_to_process", [{}])[0].get("raw_text", "")
-            urls = re.findall(r'(https?://[^\s]+)', raw_text)
-            if urls:
-                url_to_use = urls[0]
-            else:
-                raise HTTPException(status_code=400, detail="No Job URL found to apply to.")
-
-        # 3. Launch Playwright in a background thread so it doesn't freeze the React UI
-        thread = threading.Thread(target=launch_browser_thread, args=(
-            url_to_use, request.name, request.email, request.phone, request.linkedin, resume_path
-        ))
-        thread.start()
-
-        return {"status": "success", "message": "Browser launched"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        print("ERROR IN AUTO-APPLY:", traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))

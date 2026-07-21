@@ -1,0 +1,129 @@
+Olalekan KOLARU
+
+Junior AI Engineer
+
+Phone Number: 07915882309
+
+Email: kolaruolalekan@gmail.com
+
+### Professional Summary
+I am a highly skilled and innovative Business Intelligence Analyst and GenAI Engineer with over five years of experience, specializing in designing, building, and operationalizing AI and Agentic AI solutions. Enthusiastic about leveraging automation, data engineering, and advanced analytics to develop scalable AI-powered applications, including expertise in computer vision and Machine Learning. Leveraging a strong foundation in Computer Engineering, I possess practical skills in Python, SQL, Power BI, RAG Chatbots, AI Agents, Power Platform, and enterprise business applications. My expertise extends to Retrieval-Augmented Generation (RAG) architectures, Large Language Models (LLMs), and foundational knowledge in Deep Learning, computer vision, and AR/XR. Adept at designing prototypes, building intelligent systems, and collaborating cross-functionally to deliver high-impact, production-ready AI solutions. Passionate about robotics, automation, and emerging AI technologies, with a proven ability to take ownership of projects from concept to secure, reliable delivery, aligning with MLOps and Responsible AI principles. I am always ready and willing to learn new skills that can move the business to the next phase in a forward-focused organization.
+
+### Education
+**MSc in Financial Technology**
+University of the West of England Bristol
+*   Portfolio Management, BigData (SQL, Tableau, and Hadoop), Blockchain, and Programming for Data Science (Python), UI/UX Design
+2021 – 2022
+
+**BTech in Computer Science & Engineering**
+Ladoke Akintola University of Technology
+2005 – 2010
+
+### Technical Skills
+-   **Business Intelligence/Data Analysis Tools:** Power BI, Google Looker Studio, MS Excel, Hadoop Apache HIVE, Pandas, Matplotlib, NumPy, SQL Server Database, Microsoft Fabric, DAX (Data Analysis Expressions), Enterprise Analytics Platforms
+-   **Data Visualization Tools:** Power BI, MS Excel, Google Looker Studio, Google Sheets
+-   **Data Engineering:** Microsoft Fabric (Lakehouse and Data warehouse), ETL Development, Data Modeling, Scalable ETL Pipelines, Data Governance
+-   **Query & Metadata:** Power BI Power Query, SQL, T-SQL, Row-level Security (RLS)
+-   **Programming Languages:** Python (including libraries for AI/ML: NumPy, Pandas, Scikit-learn, TensorFlow, Keras, OpenCV), Deep Learning-Keras
+-   **Automation, AI Tools & Frameworks:** Power Automate, Google AppSheet, Appscript, Prompt Engineering, LLMs (ChatGPT, Copilot, Gemini, Claude), LangChain, LangGraph, CrewAI (Agentic AI frameworks, orchestration platforms, multi-agent system development), Vector Databases (ChromaDB, FAISS), Hugging Face (for model deployment/fine-tuning), Streamlit, FastAPI (for AI application deployment), MLOps practices, model deployment, monitoring, observability, and lifecycle management tools, Cloud-based AI services (Microsoft Azure AI, AWS AI, Google Cloud AI)
+-   **Desktop Application Tool:** Microsoft Office suite, SAP
+-   **Project Management Tools:** MS Project, Trello, Kanban
+-   **Design and Animation Tools:** Adobe XD, Figma, Corel Draw, Unity
+-   **Soft Skills:** Proposal writing, Design Thinking, Effective Communication, Excellent Teamwork and Team Coordination, Client Service, Analytical Thinking, Presentation, Project Management
+-   **Training & Personal Development:** Scikit Learn - ML, Computer Vision, NLP, PL300, DP-900, Azure Cloud Services (Including Azure Data Lake), Azure Machine Learning, Ms Fabric, Cybersecurity L2, Data Protection and Data Security L2, AWS, Responsible AI principles, explainability, governance, security, privacy, and compliance requirements
+
+### Experience
+**HAWK-EYE INNOVATIONS**
+**Business Intelligence Analyst/ GenAI Engineer**
+Present
+*Project Title: Financial Department Data Analysis, FP&A Business Operation Automation & AI Agent*
+*Tech Stack: Power BI, Google Looker Studio, Google Sheets, ML, Automation & GenAI, AI Agent, MCP Server*
+*Project Summary: Finance BI Reports - in-depth Business insights, and Management Information. ML Cost-Budget clustering by department. Automation projects including RAG chatbots.*
+
+-   Engineered and optimized scalable ETL pipelines using Power Query, Python, and PySpark, ensuring high data integrity and efficient data ingestion for AI models.
+-   Performed advanced data modeling and analysis, developing complex DAX measures in Power BI to derive critical business insights.
+-   Designed and deployed intelligent workflows using PowerApps and Power Automate, improving process efficiency by 90% and reducing journal processing time from hours to under 20 minutes, demonstrating expertise in enterprise application integration.
+-   Achieved 90% automation of Direct and Overhead Cost reports, significantly enhancing reporting accuracy and reducing manual effort.
+-   Developed and implemented an Agentic AI automation solution using LangGraph for 'Actuals' reporting, significantly enhancing team efficiency and operational throughput.
+-   Conducted in-depth research and development on FP&A and Float MCP Server solutions, leveraging Claude for code generation and optimization.
+-   Designed and deployed a Retrieval-Augmented Generation (RAG) SQL chatbot MVP for data analysis, integrating duckDB, data source APIs, and LLM APIs, projecting a 20% increase in analytical efficiency.
+-   Developed and deployed a Document RAG chatbot MVP using LangChain, FAISS, ChromaDB Vector DB, and Streamlit, leveraging Large Language Models (LLMs) to reduce document retrieval time by 30% and improve information access.
+-   Designed and deployed TensorFlow-Keras based machine learning models for granular cost-budget clustering by department, providing actionable insights for financial planning.
+-   Engineered and built a Vendor Invoice AI Agent using LangGraph and FastAPI, automating invoice processing and enhancing operational efficiency.
+
+**HAWK-EYE INNOVATIONS**
+**Junior Business Intelligence Analyst/Engineer**
+March 2023 – 2025
+*Project Title: Financial Data*
+*Tech Stack: Power BI, Google Looker Studio, Google Sheets, SAP BW, Microsoft Fabric, Automation & AI, ML*
+*Project Summary: Finance BI Reports - in-depth Business revenue, costs, and profit insights, Management Information, and Sports Business Intelligence Analysis per region and event. Driving actionable insights into the area of focus and improvement. Data Engineering project, automation project, clustering and ML for financial opportunities.*
+
+-   Developed robust ETL processes and metadata management with Power Query and Python, ensuring high-quality data for financial analysis and AI model training.
+-   Executed comprehensive data modeling and analysis, creating advanced DAX measures in Power BI for detailed financial reporting.
+-   Managed Power BI workspaces, including user access rights and security configurations, ensuring data governance.
+-   Designed and implemented collaborative FY forecast sales dashboards and customized reports, facilitating data-driven decision-making across departments.
+-   Identified key business department insights through exploratory data analysis, improving reporting efficiency by 10%.
+-   Provided in-depth Business Intelligence insights on revenue, cost, profits, and trading differentials, driving strategic business improvements.
+-   Managed access permissions for Power BI workspaces and conducted training for Senior Management Teams (SMTs) and report consumers, fostering data literacy.
+-   Contributed to data planning, design, and architecture for scalable analytics and AI solutions.
+-   Implemented process automation solutions using Google AppSheet and collaborated on Workato platform integration, achieving Workato Automation Pro I and II certifications.
+-   Actively leveraged Generative AI tools (e.g., for code generation, automation scripting) in daily tasks, accelerating project delivery and enhancing productivity by an estimated 15-20%.
+-   Developed predictive models for financial cost savings and trend analysis, identifying and enabling potential savings of up to 10%.
+-   Collaborated with cross-functional departments to design and deliver automation and Generative AI solutions, improving inter-departmental workflows.
+-   Collaborated with Software Security and Cybersecurity Engineers to ensure best practices for secure AI solution deployment and data protection.
+
+**JIREH COMPUTER SOLUTIONS Ent.**
+**Project Manager / Business Intelligence Developer**
+Sept 2020 – August 2021
+*Project Title: Market and Media Data Analysis, Finance*
+*Tech Stack: Power BI, MSBI*
+*Project Summary: This project utilized market data from different third-party sources to carry out market analytics to reach major media houses and niches. The project was designed to create informed decisions for stakeholders, predict product sales, and consumer behaviours, consult for various future expansions, and serve as a service-based consultancy platform for businesses throughout the country. This project was delivered by Jireh computers to Mustard Data. Mustard was a new company that employed the expertise of Jireh computers in delivering powerful market analytics tools and insight to major companies including giant multinationals in Nigeria using analysis, visualization, reports, and web services.*
+
+-   Led a Business Intelligence development team, overseeing project execution and technical delivery.
+-   Managed third-party data collation and integration for comprehensive market analytics.
+-   Managed project lifecycle from scoping and planning to resource allocation and estimation, ensuring timely delivery.
+-   Executed complex SQL Server data queries for data extraction and transformation.
+-   Designed and implemented robust data pipelines and data warehousing solutions.
+-   Performed ETL processes using Power BI for data cleansing and transformation.
+-   Developed SSAS Tabular Models and advanced data models utilizing DAX functions for enhanced analytical capabilities.
+-   Analyzed cleansed datasets to generate actionable insights and strategic recommendations for management.
+-   Developed interactive Power BI reports and dashboards, including paginated reports via SSRS, providing critical insights into organizational performance.
+-   Managed Power BI workspaces, ensuring secure access and collaboration.
+-   Provided technical support and guidance to team members across all project stages.
+
+**JIREH COMPUTER SOLUTIONS Ent.**
+**Business Intelligence Analyst – (Various Projects)**
+Sept 2016 – August 2020
+*Project Title: Sales Analysis, Health Analysis, Project RED, Sales Distribution, etc*
+*Tech Stack: MS Excel, SQL, Power BI, MSBI, ML*
+*Project Summary: This is a health and products-based project that utilized different data sources (company and third-party) to analyze sales and product distribution, staff performance, customer behavior, and patients’ medical ailment patterns. This assisted the multinational company to forecast and make informed decisions, through analysis, visualization, and reports.*
+
+-   Prepared and transformed diverse datasets using SQL, Power BI, and SSIS for robust ETL processes.
+-   Designed efficient data models to support complex analytical requirements.
+-   Created advanced DAX measures for detailed performance and comparative analysis.
+-   Developed interactive dashboards for performance monitoring and training report visualization.
+-   Conducted impact reduction analysis, identifying key areas for operational improvement.
+-   Performed clinic record analysis to identify patient ailment patterns and inform healthcare strategies.
+-   Generated paginated reports using SSRS for detailed, print-ready documentation.
+-   Actively participated in stakeholder and management meetings, presenting data insights and recommendations.
+-   Applied advanced analytics techniques for sales forecasting and comparative analysis, improving predictive accuracy.
+-   Facilitated workspace collaboration for shared data assets and reports.
+
+**JIREH COMPUTER SOLUTIONS Ent.**
+**Technical Support Officer – (Computer Hardware & Software Maintenance)**
+June 2013 – August 2015
+
+-   Diagnosed and resolved complex software integration problems, ensuring system functionality.
+-   Provided technical support to clients, resolving software and hardware issues efficiently.
+-   Supervised and performed maintenance of computer hardware and software for both internal and client systems.
+-   Troubleshot and resolved network technical issues, maintaining connectivity and performance.
+-   Designed professional marketing materials (logos, letterheads, brochures) for clients using Corel Draw.
+
+### Interests
+-   Football
+-   Chess
+-   Movie
+-   Music
+
+### Reference
+Available on request

@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  career_os_api:
+    build: .
+    container_name: career_os_backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./jobs.db:/app/jobs.db
+      - ./workspace:/app/workspace
+    restart: always

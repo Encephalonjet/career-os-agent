@@ -48,17 +48,9 @@
 
         const API_BASE_URL = "http://127.0.0.1:8000/api";
 
-        const NotionIcon = () => (
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width="14" height="14" fill="currentColor" className="mr-1">
-                <path d="M448 108.9C448 94.7 437.3 84 424.3 84H23.7C10.7 84 0 94.7 0 108.9v294.2C0 417.3 10.7 428 23.7 428h400.6c13 0 23.7-10.7 23.7-24.9V108.9zM151.7 348.6c-7.9 0-14.3-6.4-14.3-14.3V184.2c0-7.9 6.4-14.3 14.3-14.3h46.7c7.9 0 14.3 6.4 14.3 14.3v102.4l78.7-104.9c4.9-6.5 12.6-10.4 20.8-10.4h37.4c7.9 0 14.3 6.4 14.3 14.3v150.1c0 7.9-6.4 14.3-14.3 14.3h-46.7c-7.9 0-14.3-6.4-14.3-14.3V219.1l-78.7 104.9c-4.9 6.5-12.6 10.4-20.8 10.4h-37.4z"/>
-            </svg>
-        );
-
         function MarkdownBlock({ content }) {
             if (!content) return <div className="text-slate-400 italic">No content available.</div>;
-            let htmlContent = marked.parse(content);
-            htmlContent = htmlContent.replace(/<a href="/g, '<a target="_blank" rel="noopener noreferrer" href="');
-            return <div className="prose prose-sm prose-slate max-w-none" dangerouslySetInnerHTML={{ __html: htmlContent }} />;
+            return <div className="prose prose-sm prose-slate max-w-none" dangerouslySetInnerHTML={{ __html: marked.parse(content) }} />;
         }
 
         const getDiffHtml = (oldText, newText) => {
@@ -105,6 +97,9 @@
             }
         };
 
+        // ─────────────────────────────────────────────────────────────────
+        // 1. REUSABLE JOB INPUT FORM 
+        // ─────────────────────────────────────────────────────────────────
         function JobInputForm({ onComplete, onCancel, globalCvFile, globalCvText, setGlobalCvFile, setGlobalCvText }) {
             const [isLoading, setIsLoading] = useState(false);
             const [loadingStep, setLoadingStep] = useState(0);
@@ -149,6 +144,7 @@
 
             const handleSubmit = async () => {
                 const isManual = !!selectedJdFile || !!formData.jd_text || !!formData.raw_jd_fallback;
+                // Auto search trigger
                 const isAuto = !!formData.title;
 
                 if (!isManual && !isAuto) {
@@ -186,7 +182,7 @@
                         }
                         
                         payload.append("target_title", formData.title);
-                        payload.append("location", queryLocation);
+                        payload.append("location", queryLocation); 
                         payload.append("provider", formData.provider);
                         payload.append("max_jobs", 2);
                         payload.append("job_board", "All Supported Boards");
@@ -204,6 +200,7 @@
                             throw new Error(err.detail || "Auto-Search failed.");
                         }
                         
+                        // Pass nothing to keep modal open if 0 jobs found
                         onComplete(); 
                         
                     } else {
@@ -232,7 +229,8 @@
                             const err = await response.json();
                             throw new Error(err.detail || "Failed to evaluate job. Check backend console.");
                         }
-                        onComplete(); 
+                        
+                        onComplete();
                     }
                 } catch (error) {
                     setErrorMsg(error.message);
@@ -306,7 +304,7 @@
                             <input type="text" value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} placeholder="e.g. AI Engineer" className="w-full border border-slate-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white" />
                         </div>
                         <div className="flex-1 space-y-2">
-                            <label className="text-sm font-bold text-slate-700">Location <span className="text-slate-400 font-normal ml-1">(Optional)</span></label>
+                            <label className="text-sm font-bold text-slate-700">Location <span className="text-slate-400 font-normal ml-1">(Auto-Search)</span></label>
                             <input type="text" value={formData.location} onChange={(e) => setFormData({...formData, location: e.target.value})} placeholder="e.g. London, Remote US" className="w-full border border-slate-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white" />
                         </div>
                     </div>
@@ -393,7 +391,10 @@
             );
         }
 
-        function KanbanBoard({ jobs, onUpdateStatus, onViewJob, onDeleteJob, newlyAddedIds, lastViewedJobId, setLastViewedJobId }) {
+        // ─────────────────────────────────────────────────────────────────
+        // 2. KANBAN BOARD COMPONENT
+        // ─────────────────────────────────────────────────────────────────
+        function KanbanBoard({ jobs, onUpdateStatus, onViewJob, onDeleteJob, newlyAddedIds }) {
             const columns = [
                 { id: "To Apply", title: "To Apply", icon: "fa-inbox", color: "bg-slate-200 text-slate-700" },
                 { id: "Applied", title: "Applied", icon: "fa-paper-plane", color: "bg-blue-100 text-blue-700" },
@@ -402,88 +403,69 @@
             ];
 
             return (
-                <div className="flex-1 flex flex-col h-full bg-slate-100">
-                    <div className="px-6 py-4 flex items-center">
-                        {lastViewedJobId && jobs.find(j => j.id === lastViewedJobId) && (
-                            <button 
-                                onClick={() => onViewJob(jobs.find(j => j.id === lastViewedJobId))} 
-                                className="p-2 mr-2 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-indigo-600 transition-colors shadow-sm flex items-center justify-center gap-2 text-sm font-bold"
-                            >
-                                <i className="fa-solid fa-chevron-left"></i> Workspace
-                            </button>
-                        )}
-                    </div>
-                    <div className="flex-1 flex overflow-x-auto px-6 pb-6 gap-6 custom-scrollbar">
-                        {columns.map(col => (
-                            <div key={col.id} className="flex flex-col w-80 shrink-0 h-full max-h-full">
-                                <div className={`px-4 py-3 rounded-t-xl font-bold flex items-center justify-between ${col.color}`}>
-                                    <div className="flex items-center gap-2"><i className={`fa-solid ${col.icon}`}></i> {col.title}</div>
-                                    <span className="bg-white/50 px-2 py-0.5 rounded-full text-xs">{jobs.filter(j => j.status === col.id).length}</span>
-                                </div>
-                                <div className="flex-1 bg-slate-200/50 rounded-b-xl p-3 overflow-y-auto custom-scrollbar space-y-3 border-x border-b border-slate-200 shadow-inner">
-                                    {jobs.filter(j => j.status === col.id).map(job => (
-                                        <div key={job.id} 
-                                            onClick={() => {
-                                                setLastViewedJobId(job.id);
-                                                onViewJob(job);
-                                            }} 
-                                            className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer relative group"
-                                        >
-                                            {newlyAddedIds && newlyAddedIds.includes(job.id) && (
-                                                <span className="absolute -top-1.5 -right-1.5 flex h-3.5 w-3.5">
-                                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                                  <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500 border border-white"></span>
-                                                </span>
-                                            )}
+                <div className="flex-1 flex overflow-x-auto p-6 gap-6 custom-scrollbar h-full bg-slate-100">
+                    {columns.map(col => (
+                        <div key={col.id} className="flex flex-col w-80 shrink-0 h-full max-h-full">
+                            <div className={`px-4 py-3 rounded-t-xl font-bold flex items-center justify-between ${col.color}`}>
+                                <div className="flex items-center gap-2"><i className={`fa-solid ${col.icon}`}></i> {col.title}</div>
+                                <span className="bg-white/50 px-2 py-0.5 rounded-full text-xs">{jobs.filter(j => j.status === col.id).length}</span>
+                            </div>
+                            <div className="flex-1 bg-slate-200/50 rounded-b-xl p-3 overflow-y-auto custom-scrollbar space-y-3 border-x border-b border-slate-200 shadow-inner">
+                                {jobs.filter(j => j.status === col.id).map(job => (
+                                    <div key={job.id} onClick={() => onViewJob(job)} className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer relative group">
+                                        
+                                        {/* NEW Badge Indicator - Pulsing Green Dot */}
+                                        {newlyAddedIds && newlyAddedIds.includes(job.id) && (
+                                            <span className="absolute -top-1.5 -right-1.5 flex h-3.5 w-3.5">
+                                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                              <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500 border border-white"></span>
+                                            </span>
+                                        )}
 
-                                            <div className="flex justify-between items-start mb-2">
-                                                <h4 className="font-bold text-slate-800 leading-tight truncate pr-2">{job.title}</h4>
-                                                <div className="flex items-center gap-2 shrink-0">
-                                                    <span className={`text-[10px] font-bold px-2 py-1 rounded-full border ${job.score >= 80 ? 'bg-green-50 text-green-700 border-green-200' : job.score >= 60 ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 'bg-red-50 text-red-700 border-red-200'}`}>{job.score}/100</span>
-                                                    <button onClick={(e) => { e.stopPropagation(); onDeleteJob(job.id); }} className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1" title="Delete Job">
-                                                        <i className="fa-solid fa-trash-can text-xs"></i>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            
-                                            <div className="flex items-center gap-2 mb-4 text-slate-500">
-                                                <p className="text-xs font-semibold truncate">{job.company}</p>
-                                            </div>
-                                            
-                                            <div className="flex justify-between items-center pt-3 border-t border-slate-100" onClick={(e) => e.stopPropagation()}>
-                                                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded">View Workspace</span>
-                                                <select value={job.status} onChange={(e) => onUpdateStatus(job.id, e.target.value)} className="text-xs border rounded p-1 text-slate-600 focus:outline-none bg-slate-50 hover:bg-slate-100 cursor-pointer">
-                                                    {columns.map(c => <option key={c.id} value={c.id}>Move: {c.title}</option>)}
-                                                </select>
+                                        <div className="flex justify-between items-start mb-2">
+                                            <h4 className="font-bold text-slate-800 leading-tight truncate pr-2">{job.title}</h4>
+                                            <div className="flex items-center gap-2 shrink-0">
+                                                <span className={`text-[10px] font-bold px-2 py-1 rounded border ${job.score >= 80 ? 'bg-green-50 text-green-700 border-green-200' : job.score >= 60 ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 'bg-red-50 text-red-700 border-red-200'}`}>{job.score}/100</span>
+                                                <button onClick={(e) => { e.stopPropagation(); onDeleteJob(job.id); }} className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1" title="Delete Job">
+                                                    <i className="fa-solid fa-trash-can text-xs"></i>
+                                                </button>
                                             </div>
                                         </div>
-                                    ))}
-                                </div>
+                                        
+                                        {/* Sleek Source Tag formatted to match Match Score Pill sizing */}
+                                        <div className="flex items-center gap-2 mb-4 text-slate-500">
+                                            <p className="text-xs font-semibold truncate">{job.company}</p>
+                                            <span className="text-slate-300">•</span>
+                                            <span className="text-[10px] bg-slate-50 border border-slate-200 px-2 py-1 rounded text-slate-600 font-semibold tracking-wide shrink-0 capitalize">{job.source || "Manual"}</span>
+                                        </div>
+                                        
+                                        <div className="flex justify-between items-center pt-3 border-t border-slate-100" onClick={(e) => e.stopPropagation()}>
+                                            <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded">View Workspace</span>
+                                            <select value={job.status} onChange={(e) => onUpdateStatus(job.id, e.target.value)} className="text-xs border rounded p-1 text-slate-600 focus:outline-none bg-slate-50 hover:bg-slate-100 cursor-pointer">
+                                                {columns.map(c => <option key={c.id} value={c.id}>Move: {c.title}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
-                        ))}
-                    </div>
+                        </div>
+                    ))}
                 </div>
             );
         }
 
-        function AgentWorkspace({ jobData, onBack, allJobs, setActiveJob, newlyAddedIds, setLastViewedJobId }) {
+        // ─────────────────────────────────────────────────────────────────
+        // 3. AGENT WORKSPACE
+        // ─────────────────────────────────────────────────────────────────
+        function AgentWorkspace({ jobData, onBack, allJobs, setActiveJob, newlyAddedIds }) {
             const [leftTab, setLeftTab] = useState('ats');
             const [rightTab, setRightTab] = useState('roadmap');
             const [showDownloadMenu, setShowDownloadMenu] = useState(false);
             const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-            const [hiddenSidebarJobs, setHiddenSidebarJobs] = useState([]);
-            const [showApplyModal, setShowApplyModal] = useState(false);
-
-            // --- PHASE 5: AUTO-APPLY STATE ---
-            const [applyProfile, setApplyProfile] = useState(() => JSON.parse(localStorage.getItem('applyProfile')) || { name: '', email: '', phone: '', linkedin: '', job_url: '' });
-            const [isLaunching, setIsLaunching] = useState(false);
 
             const fullData = jobData.full_data || {};
             const docs = (fullData.generated_docs && fullData.generated_docs.length > 0) ? fullData.generated_docs[0] : {};
             
-            // --- PHASE 5: EXTRACT OUTREACH DATA ---
-            const outreach = (fullData.outreach_outputs && fullData.outreach_outputs.length > 0) ? fullData.outreach_outputs[0] : null;
-
             const [isEditingCv, setIsEditingCv] = useState(false);
             const [cvContent, setCvContent] = useState(docs.tailored_cv_markdown || "");
             
@@ -506,11 +488,6 @@
                 setClContent(docs.cover_letter_markdown || "");
                 setIsEditingCv(false);
                 setIsEditingCl(false);
-                
-                // --- PHASE 5: PRE-FILL JOB URL FOR MODAL ---
-                const rawText = (fullData.jobs_to_process && fullData.jobs_to_process.length > 0) ? fullData.jobs_to_process[0].raw_text : "";
-                const urlMatch = rawText ? rawText.match(/https?:\/\/[^\s]+/) : null;
-                setApplyProfile(prev => ({ ...prev, job_url: urlMatch ? urlMatch[0] : "" }));
             }, [jobData.id]);
 
             useEffect(() => {
@@ -551,26 +528,16 @@
                     'F': 'bg-red-100 text-red-800 border-red-200',
                 };
                 const colorClass = colors[val] || 'bg-slate-100 text-slate-800 border-slate-200';
-                return <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${colorClass}`}>{val || '-'}</span>;
+                return <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${colorClass}`}>{val || '-'}</span>;
             };
 
             const getStatusColor = (status) => {
                 switch(status) {
-                    case 'To Apply': return 'bg-slate-400';
-                    case 'Applied': return 'bg-blue-500';
-                    case 'Interviewing': return 'bg-purple-500';
-                    case 'Offer / Rejected': return 'bg-red-500';
-                    default: return 'bg-slate-400';
-                }
-            };
-
-            const getStatusText = (status) => {
-                switch(status) {
-                    case 'To Apply': return 'To Apply';
-                    case 'Applied': return 'Applied';
-                    case 'Interviewing': return 'Interview';
-                    case 'Offer / Rejected': return 'Closed';
-                    default: return status;
+                    case 'To Apply': return 'text-slate-400 bg-slate-100';
+                    case 'Applied': return 'text-blue-600 bg-blue-100';
+                    case 'Interviewing': return 'text-purple-600 bg-purple-100';
+                    case 'Offer / Rejected': return 'text-red-600 bg-red-100';
+                    default: return 'text-slate-400 bg-slate-100';
                 }
             };
 
@@ -582,45 +549,36 @@
                 { key: 'Timezone', val: evals.commute_timezone }, { key: 'Keywords', val: evals.ats_keyword_density },
             ];
 
-            const visibleJobs = allJobs.filter(j => !hiddenSidebarJobs.includes(j.id));
-
             return (
                 <div className="flex h-full bg-slate-50 relative min-w-0 w-full">
                     {/* SIDEBAR */}
                     <div className={`bg-white border-r border-slate-200 flex flex-col shrink-0 z-20 transition-all duration-300 ${isSidebarOpen ? 'w-64' : 'w-0 overflow-hidden'}`}>
                         <div className="p-3 border-b bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between min-w-[256px]">
                             <span>Job Queue</span>
-                            <span className="bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full">{visibleJobs.length} Saved</span>
+                            <span className="bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full">{allJobs.length} Saved</span>
                         </div>
                         <div className="flex-1 overflow-y-auto custom-scrollbar min-w-[256px]">
-                            {visibleJobs.map(job => (
-                                <div key={job.id} onClick={() => { setLastViewedJobId(job.id); setActiveJob(job); }} className={`p-4 border-b cursor-pointer transition-colors relative group ${job.id === jobData.id ? 'bg-indigo-50 border-l-4 border-l-indigo-600' : 'hover:bg-slate-50 border-l-4 border-l-transparent'}`}>
+                            {allJobs.map(job => (
+                                <div key={job.id} onClick={() => setActiveJob(job)} className={`p-4 border-b cursor-pointer transition-colors relative group ${job.id === jobData.id ? 'bg-indigo-50 border-l-4 border-l-indigo-600' : 'hover:bg-slate-50 border-l-4 border-l-transparent'}`}>
+                                    {/* NEW Badge Indicator in Sidebar */}
                                     {newlyAddedIds && newlyAddedIds.includes(job.id) && (
                                         <span className="absolute top-4 right-4 h-2 w-2 rounded-full bg-emerald-500"></span>
                                     )}
                                     <div className="flex justify-between items-start mb-1 pr-3">
                                         <h3 className="font-bold text-xs text-slate-900 leading-tight truncate flex items-center gap-1.5">
+                                            {/* Status Indicator Dot */}
+                                            <span className={`w-2 h-2 rounded-full ${getStatusColor(job.status)}`} title={`Status: ${job.status}`}></span>
                                             {job.title}
                                         </h3>
                                         <div className="flex items-center gap-2 shrink-0">
-                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ml-2 ${job.score >= 80 ? 'bg-green-50 text-green-700 border-green-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200'}`}>{job.score}</span>
-                                            <button onClick={(e) => { 
-                                                e.stopPropagation(); 
-                                                setHiddenSidebarJobs([...hiddenSidebarJobs, job.id]);
-                                                if(job.id === jobData.id) onBack(); 
-                                            }} className="text-slate-300 hover:text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity p-1" title="Hide from Sidebar">
+                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ml-2 ${job.score >= 80 ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{job.score}</span>
+                                            {/* Changed Sidebar Delete to Close ('x') */}
+                                            <button onClick={(e) => { e.stopPropagation(); onBack(); }} className="text-slate-300 hover:text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity p-1" title="Close Workspace">
                                                 <i className="fa-solid fa-xmark text-xs"></i>
                                             </button>
                                         </div>
                                     </div>
-                                    
-                                    <p className="text-[11px] text-slate-500 font-semibold flex items-center gap-1 mt-1 truncate ml-3.5"><i className="fa-regular fa-building"></i> {job.company}</p>
-                                    
-                                    {/* Sidebar Status Colored Dot & Text */}
-                                    <div className="flex items-center gap-1.5 mt-2 ml-3.5">
-                                        <span className={`w-2 h-2 rounded-full ${getStatusColor(job.status)}`}></span>
-                                        <span className="text-[10px] text-slate-500 font-bold">{getStatusText(job.status)}</span>
-                                    </div>
+                                    <p className="text-[11px] text-slate-500 font-semibold flex items-center gap-1 truncate ml-3.5"><i className="fa-regular fa-building"></i> {job.company}</p>
                                 </div>
                             ))}
                         </div>
@@ -634,6 +592,7 @@
                                     <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-slate-400 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 rounded transition-colors hidden md:block">
                                         <i className={`fa-solid ${isSidebarOpen ? 'fa-chevron-left' : 'fa-chevron-right'}`}></i>
                                     </button>
+                                    {/* Back icon to return to Kanban */}
                                     <button onClick={onBack} className="p-2 text-slate-400 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 rounded transition-colors hidden md:block md:hidden" title="Back to Kanban">
                                         <i className="fa-solid fa-arrow-left"></i>
                                     </button>
@@ -642,20 +601,18 @@
                                             <h2 className="text-xl md:text-2xl font-extrabold text-slate-900 flex items-center gap-3">
                                                 {jobData.company} <span className="text-slate-300 font-light">/</span> {jobData.title}
                                             </h2>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className={`text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1 border inline-block ${jobData.score >= 80 ? 'bg-green-50 text-green-700 border-green-200' : jobData.score >= 60 ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
-                                                <i className="fa-solid fa-check"></i> Match: {evals.overall_score || jobData.score}/100 
-                                                <span className="opacity-50 mx-1">|</span> Verdict: {evals.hire_verdict || "Evaluating..."}
+                                            {/* Source Tag properly styled and isolated */}
+                                            <span className="text-[10px] bg-slate-50 text-slate-600 border border-slate-200 px-2 py-1 rounded font-semibold tracking-wide capitalize ml-2">
+                                                <i className="fa-solid fa-globe mr-1"></i> {jobData.source || "Manual"}
                                             </span>
-                                            {jobData.source && jobData.source !== "Manual Upload" && (
-                                                <span className="text-[10px] font-bold px-3 py-1 rounded-full border bg-slate-50 text-slate-500 border-slate-200 flex items-center gap-1">
-                                                    <i className="fa-solid fa-globe"></i> {jobData.source}
-                                                </span>
-                                            )}
                                         </div>
+                                        <span className={`text-xs font-bold px-3 py-1 rounded flex items-center gap-1 border inline-block ${jobData.score >= 80 ? 'bg-green-50 text-green-700 border-green-200' : jobData.score >= 60 ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+                                            <i className="fa-solid fa-check"></i> Match: {evals.overall_score || jobData.score}/100 
+                                            <span className="opacity-50 mx-1">|</span> Verdict: {evals.hire_verdict || "Evaluating..."}
+                                        </span>
                                     </div>
                                 </div>
+                                {/* Proper Spacing for Right-Aligned Buttons */}
                                 <div className="flex items-center gap-3 relative shrink-0">
                                     <div className="relative">
                                         <button onClick={() => setShowDownloadMenu(!showDownloadMenu)} onBlur={() => setTimeout(() => setShowDownloadMenu(false), 200)} className="px-4 py-2 bg-white border border-slate-300 text-slate-700 font-bold rounded-lg text-sm shadow-sm hover:bg-slate-50 flex items-center gap-2 transition-colors">
@@ -668,8 +625,7 @@
                                             </div>
                                         )}
                                     </div>
-                                    {/* --- PHASE 5: AUTO-APPLY OPEN MODAL BUTTON --- */}
-                                    <button onClick={() => setShowApplyModal(true)} className="px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg text-sm shadow-sm hover:bg-indigo-700 flex items-center gap-2 transition-colors">
+                                    <button className="px-4 py-2 bg-indigo-600 text-white font-bold rounded-lg text-sm shadow-sm hover:bg-indigo-700 flex items-center gap-2 transition-colors">
                                         <i className="fa-solid fa-paper-plane"></i> Auto-Apply
                                     </button>
                                 </div>
@@ -714,6 +670,12 @@
                                 <div className="flex-1 overflow-y-auto custom-scrollbar bg-white flex relative">
                                     {leftTab === 'jd' && (
                                         <div className="p-6 md:p-8 w-full">
+                                            {/* Target _blank added for original post links */}
+                                            {jobInput.url && (
+                                                <a href={jobInput.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-700 border border-indigo-100 px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-100 transition-colors mb-6">
+                                                    <i className="fa-solid fa-arrow-up-right-from-square"></i> View Original Posting
+                                                </a>
+                                            )}
                                             <MarkdownBlock content={jobInput.raw_text} />
                                         </div>
                                     )}
@@ -761,8 +723,6 @@
                                     <button onClick={() => setRightTab('roadmap')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap transition-colors ${rightTab === 'roadmap' ? 'border-indigo-600 text-indigo-600 bg-slate-50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}><i className="fa-solid fa-map-location-dot mr-2"></i> Gaps & Roadmap</button>
                                     <button onClick={() => setRightTab('chat')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap transition-colors ${rightTab === 'chat' ? 'border-indigo-600 text-indigo-600 bg-slate-50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}><i className="fa-solid fa-robot mr-2"></i> Chat Agent</button>
                                     <button onClick={() => setRightTab('coach')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap transition-colors ${rightTab === 'coach' ? 'border-indigo-600 text-indigo-600 bg-slate-50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}><i className="fa-solid fa-chalkboard-user mr-2"></i> Interview Coach</button>
-                                    {/* --- PHASE 5: OUTREACH TAB BUTTON --- */}
-                                    {outreach && <button onClick={() => setRightTab('outreach')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap transition-colors ${rightTab === 'outreach' ? 'border-indigo-600 text-indigo-600 bg-slate-50' : 'border-transparent text-slate-500 hover:text-slate-700'}`}><i className="fa-solid fa-paper-plane mr-2"></i> Outreach</button>}
                                 </div>
 
                                 <div className="flex-1 overflow-hidden relative flex flex-col bg-slate-50">
@@ -859,111 +819,29 @@
                                             </div>
                                         </div>
                                     )}
-
-                                    {/* --- PHASE 5: OUTREACH TAB CONTENT --- */}
-                                    {rightTab === 'outreach' && outreach && (
-                                        <div className="flex-1 overflow-y-auto p-4 md:p-5 custom-scrollbar space-y-4">
-                                            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 border-l-4 border-l-emerald-500">
-                                                <h3 className="font-bold text-slate-800 mb-3 text-sm flex items-center gap-2"><i className="fa-solid fa-envelope-open-text text-emerald-500"></i> Cold Email Strategy</h3>
-                                                <MarkdownBlock content={outreach.cold_email} />
-                                            </div>
-                                            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 border-l-4 border-l-indigo-500">
-                                                <h3 className="font-bold text-slate-800 mb-3 text-sm flex items-center gap-2"><i className="fa-solid fa-folder-open text-indigo-500"></i> Target Portfolio Strategy</h3>
-                                                <MarkdownBlock content={outreach.portfolio_strategy} />
-                                            </div>
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* --- PHASE 5: AUTO-APPLY MODAL OVERLAY --- */}
-                    {showApplyModal && (
-                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 overflow-y-auto">
-                            <div className="bg-white rounded-2xl shadow-xl p-6 md:p-8 w-full max-w-md my-auto relative animate-in fade-in zoom-in duration-200">
-                                <button onClick={() => setShowApplyModal(false)} className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition-colors">
-                                    <i className="fa-solid fa-xmark"></i>
-                                </button>
-                                <div className="flex items-center gap-3 mb-4">
-                                    <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
-                                        <i className="fa-solid fa-paper-plane text-lg"></i>
-                                    </div>
-                                    <h3 className="text-xl font-bold text-slate-900">Initiate Auto-Apply</h3>
-                                </div>
-                                <p className="text-sm text-slate-600 mb-4 leading-relaxed">
-                                    Confirm your profile details below. The agent will launch a browser, navigate to the portal, and map these details.
-                                </p>
-                                
-                                <div className="space-y-3 mb-6">
-                                    <div>
-                                        <label className="text-xs font-bold text-slate-700">Full Name</label>
-                                        <input type="text" value={applyProfile.name} onChange={(e) => setApplyProfile({...applyProfile, name: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs font-bold text-slate-700">Email Address</label>
-                                        <input type="email" value={applyProfile.email} onChange={(e) => setApplyProfile({...applyProfile, email: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs font-bold text-slate-700">Phone Number</label>
-                                        <input type="tel" value={applyProfile.phone} onChange={(e) => setApplyProfile({...applyProfile, phone: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs font-bold text-slate-700">LinkedIn URL</label>
-                                        <input type="url" value={applyProfile.linkedin} onChange={(e) => setApplyProfile({...applyProfile, linkedin: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-                                    </div>
-                                    <div>
-                                        <label className="text-xs font-bold text-slate-700">Job URL <span className="text-slate-400 font-normal">(Auto-detected)</span></label>
-                                        <input type="url" value={applyProfile.job_url} onChange={(e) => setApplyProfile({...applyProfile, job_url: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-slate-50" />
-                                    </div>
-                                </div>
-
-                                <div className="flex gap-3 justify-end">
-                                    <button onClick={() => setShowApplyModal(false)} disabled={isLaunching} className="px-4 py-2 font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors disabled:opacity-50">
-                                        Cancel
-                                    </button>
-                                    <button onClick={async () => {
-                                        localStorage.setItem('applyProfile', JSON.stringify(applyProfile));
-                                        setIsLaunching(true);
-                                        try {
-                                            const res = await fetch(`${API_BASE_URL}/jobs/${jobData.id}/auto-apply`, {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify(applyProfile)
-                                            });
-                                            if(!res.ok) throw new Error("Failed to launch");
-                                            setTimeout(() => {
-                                                setIsLaunching(false);
-                                                setShowApplyModal(false);
-                                            }, 1000);
-                                        } catch(e) {
-                                            alert("Error launching browser. Check server logs.");
-                                            setIsLaunching(false);
-                                        }
-                                    }} disabled={isLaunching} className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-xl shadow-md hover:bg-indigo-700 flex items-center gap-2 transition-transform active:scale-95 disabled:opacity-75">
-                                        {isLaunching ? <i className="fa-solid fa-spinner fa-spin text-lg"></i> : <i className="fa-regular fa-circle-play text-lg"></i>} 
-                                        {isLaunching ? 'Launching...' : 'Launch Browser'}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
                 </div>
             );
         }
 
+        // ─────────────────────────────────────────────────────────────────
+        // 4. MAIN APP CONTROLLER
+        // ─────────────────────────────────────────────────────────────────
         function JobAgentApp() {
             const [view, setView] = useState('input'); 
             const [activeJob, setActiveJob] = useState(null);
             const [jobs, setJobs] = useState([]);
-            const [lastViewedJobId, setLastViewedJobId] = useState(null); 
             
             const [showAddModal, setShowAddModal] = useState(false);
             const [showSearchModal, setShowSearchModal] = useState(false);
             
             const [globalCvFile, setGlobalCvFile] = useState(null);
             const [globalCvText, setGlobalCvText] = useState("");
+            const [isCvLoading, setIsCvLoading] = useState(true);
             const [newlyAddedIds, setNewlyAddedIds] = useState([]);
 
             const [searchTitle, setSearchTitle] = useState("");
@@ -980,10 +858,6 @@
                 try { return JSON.parse(localStorage.getItem('recentSearches')) || []; }
                 catch(e) { return []; }
             });
-
-            // NOTION SYNC STATE (Phase 4)
-            const [isSyncing, setIsSyncing] = useState(false);
-            const [syncMessage, setSyncMessage] = useState(null);
 
             const fetchJobs = async () => {
                 try {
@@ -1008,16 +882,9 @@
                             setGlobalCvText(data.cv_text);
                         }
                     })
-                    .catch(err => console.error("Failed to load saved CV profile", err));
+                    .catch(err => console.error("Failed to load saved CV profile", err))
+                    .finally(() => setIsCvLoading(false));
             }, []);
-
-            // Clear Sync Message automatically after 6 seconds
-            useEffect(() => {
-                if (syncMessage) {
-                    const timer = setTimeout(() => setSyncMessage(null), 6000);
-                    return () => clearTimeout(timer);
-                }
-            }, [syncMessage]);
 
             const handleUpdateStatus = async (jobId, newStatus) => {
                 try {
@@ -1050,25 +917,6 @@
                 localStorage.setItem('recentSearches', JSON.stringify(updated));
             };
 
-            // NOTION SYNC HANDLER (Phase 4)
-            const handleSyncNotion = async () => {
-                setIsSyncing(true);
-                setSyncMessage(null);
-                try {
-                    const res = await fetch(`${API_BASE_URL}/notion/sync`, { method: 'POST' });
-                    if (!res.ok) {
-                        const err = await res.json();
-                        throw new Error(err.detail || "Notion Sync failed.");
-                    }
-                    const data = await res.json();
-                    setSyncMessage({ type: 'success', text: `Successfully synced ${data.synced_count} jobs to Notion!` });
-                } catch (err) {
-                    setSyncMessage({ type: 'error', text: `Sync Error: ${err.message}` });
-                } finally {
-                    setIsSyncing(false);
-                }
-            };
-
             const handleDashboardAutoSearch = async () => {
                 if (!searchTitle) {
                     setSearchStatus("❌ Please enter a Target Role.");
@@ -1092,7 +940,7 @@
                     if (globalCvFile) payload.append("file", globalCvFile);
                     payload.append("base_cv_text", globalCvText || "");
                     payload.append("target_title", searchTitle);
-                    payload.append("location", searchLocation);
+                    payload.append("location", searchLocation || ""); // Location is optional
                     payload.append("provider", "gemini");
                     payload.append("max_jobs", searchMaxJobs);
                     payload.append("job_board", searchBoard);
@@ -1116,7 +964,14 @@
                         setNewlyAddedIds(prev => Array.from(new Set([...prev, ...data.new_job_ids])));
                     }
                     fetchJobs(); 
-                    
+                    // Modal no longer automatically closes on 0 jobs found
+                    if(data.added_jobs > 0) {
+                        setTimeout(() => {
+                            setShowSearchModal(false);
+                            setSearchStatus("");
+                        }, 3000);
+                    }
+
                 } catch(e) {
                     setSearchStatus(`❌ Error: ${e.message}`);
                 } finally {
@@ -1126,18 +981,6 @@
 
             return (
                 <div className="flex flex-col h-screen w-full bg-slate-50 relative">
-                    {/* TOAST NOTIFICATION FOR NOTION SYNC */}
-                    {syncMessage && (
-                        <div className={`fixed top-20 right-6 px-6 py-4 rounded-xl shadow-2xl z-[100] flex items-center gap-4 toast-animate border-2 ${syncMessage.type === 'success' ? 'bg-green-600 text-white border-green-400' : 'bg-red-600 text-white border-red-400'}`}>
-                            <i className={`fa-solid ${syncMessage.type === 'success' ? 'fa-check-circle' : 'fa-circle-exclamation'} text-2xl`}></i>
-                            <div className="flex flex-col max-w-sm">
-                                <span className="font-bold text-sm">{syncMessage.type === 'success' ? 'Notion Sync Complete' : 'Notion Sync Failed'}</span>
-                                <span className={`text-xs ${syncMessage.type === 'success' ? 'text-green-100' : 'text-red-100'}`}>{syncMessage.text}</span>
-                            </div>
-                            <button onClick={() => setSyncMessage(null)} className="ml-2 hover:opacity-75 transition-opacity"><i className="fa-solid fa-xmark text-xl"></i></button>
-                        </div>
-                    )}
-
                     <div className="h-16 border-b bg-slate-900 text-white flex items-center justify-between px-6 shrink-0 z-30 shadow-sm">
                         <div className="font-bold text-lg flex items-center gap-3">
                             <button onClick={() => { setActiveJob(null); }} className="p-1 hover:text-indigo-400 transition-colors md:hidden"><i className="fa-solid fa-bars"></i></button>
@@ -1147,12 +990,6 @@
                             </div>
                         </div>
                         <div className="flex gap-3">
-                            {view === 'dashboard' && (
-                                <button onClick={handleSyncNotion} disabled={isSyncing} className={`px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-transform active:scale-95 flex items-center gap-2 ${isSyncing ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-black hover:bg-slate-800 text-white border border-slate-700'}`}>
-                                    {isSyncing ? <i className="fa-solid fa-spinner fa-spin text-slate-500"></i> : <NotionIcon />} <span className="hidden md:inline">{isSyncing ? 'Syncing...' : 'Sync to Notion'}</span>
-                                </button>
-                            )}
-                            
                             <button onClick={() => { setView('dashboard'); setActiveJob(null); }} className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors flex items-center gap-2 ${view === 'dashboard' && !activeJob ? 'bg-slate-700 border-slate-600 text-white' : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300'}`}>
                                 <i className="fa-solid fa-table-columns"></i> <span className="hidden md:inline">Kanban Board</span>
                             </button>
@@ -1184,15 +1021,14 @@
                                         globalCvText={globalCvText}
                                         setGlobalCvFile={setGlobalCvFile}
                                         setGlobalCvText={setGlobalCvText}
+                                        isCvLoading={isCvLoading}
                                         onComplete={async (addedJobIds) => {
                                             const updatedJobs = await fetchJobs();
                                             if (addedJobIds && addedJobIds.length > 0) {
                                                 setNewlyAddedIds(prev => Array.from(new Set([...prev, ...addedJobIds])));
                                                 setActiveJob(null);
                                             } else {
-                                                const newActive = updatedJobs[updatedJobs.length - 1];
-                                                setActiveJob(newActive);
-                                                setLastViewedJobId(newActive.id);
+                                                setActiveJob(updatedJobs[updatedJobs.length - 1]);
                                             }
                                             setView('dashboard');
                                         }} 
@@ -1215,8 +1051,6 @@
                                         }} 
                                         onDeleteJob={handleDeleteJob}
                                         newlyAddedIds={newlyAddedIds}
-                                        lastViewedJobId={lastViewedJobId}
-                                        setLastViewedJobId={setLastViewedJobId}
                                     />
                                 ) : (
                                     <AgentWorkspace 
@@ -1229,8 +1063,8 @@
                                             }
                                         }} 
                                         onBack={() => setActiveJob(null)} 
+                                        onDeleteJob={handleDeleteJob}
                                         newlyAddedIds={newlyAddedIds}
-                                        setLastViewedJobId={setLastViewedJobId}
                                     />
                                 )}
                             </div>
@@ -1253,15 +1087,14 @@
                                         globalCvText={globalCvText}
                                         setGlobalCvFile={setGlobalCvFile}
                                         setGlobalCvText={setGlobalCvText}
+                                        isCvLoading={isCvLoading}
                                         onComplete={async (addedJobIds) => {
                                             const updatedJobs = await fetchJobs();
                                             if (addedJobIds && addedJobIds.length > 0) {
                                                 setNewlyAddedIds(prev => Array.from(new Set([...prev, ...addedJobIds])));
                                                 setActiveJob(null);
                                             } else {
-                                                const newActive = updatedJobs[updatedJobs.length - 1];
-                                                setActiveJob(newActive);
-                                                setLastViewedJobId(newActive.id);
+                                                setActiveJob(updatedJobs[updatedJobs.length - 1]);
                                             }
                                             setShowAddModal(false);
                                         }} 
