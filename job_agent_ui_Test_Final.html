@@ -513,6 +513,7 @@
             const jobInput = (fullData.jobs_to_process && fullData.jobs_to_process.length > 0) ? fullData.jobs_to_process[0] : {};
             const changesMade = docs.changes_made || [];
 
+            // Helper to prevent long LLM evaluation paragraphs from bloating the header capsule
             const getCleanVerdict = (rawVerdict) => {
                 if (!rawVerdict) return "Evaluating...";
                 if (rawVerdict.length > 25) {
@@ -666,6 +667,7 @@
                                             </h2>
                                         </div>
                                         <div className="flex items-center gap-2">
+                                            {/* SANITIZED HEADER BADGE CAPSULE */}
                                             <span className={`text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1 border inline-block ${jobData.score >= 80 ? 'bg-green-50 text-green-700 border-green-200' : jobData.score >= 60 ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
                                                 <i className="fa-solid fa-check"></i> Match: {evals.overall_score || jobData.score}/100 
                                                 <span className="opacity-50 mx-1">|</span> Verdict: {getCleanVerdict(evals.hire_verdict)}
@@ -719,19 +721,27 @@
                                             <button onClick={() => setLeftTab('portfolio')} className={`px-4 py-3 text-sm font-bold border-b-2 whitespace-nowrap transition-colors ${leftTab === 'portfolio' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}><i className="fa-solid fa-laptop-code mr-2"></i> Portfolio</button>
                                         )}
                                     </div>
-                                    {/* Edit Buttons grouped cleanly */}
-                                    <div className="flex gap-2 pb-2 pr-2 shrink-0">
-                                        {leftTab === 'ats' && (
+                                    {leftTab === 'ats' && (
+                                        <div className="flex gap-2 pb-2 pr-2">
                                             <button onClick={() => setIsEditingCv(!isEditingCv)} className={`px-3 py-1.5 text-xs font-bold rounded shadow-sm transition-colors ${isEditingCv ? 'bg-green-500 hover:bg-green-600 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'}`}>
                                                 <i className={`fa-solid ${isEditingCv ? 'fa-check' : 'fa-pen'} mr-1`}></i> {isEditingCv ? 'Save Edits' : 'Edit CV'}
                                             </button>
-                                        )}
-                                        {leftTab === 'cl' && (
+                                        </div>
+                                    )}
+                                    {leftTab === 'cl' && (
+                                        <div className="flex gap-2 pb-2 pr-2">
                                             <button onClick={() => setIsEditingCl(!isEditingCl)} className={`px-3 py-1.5 text-xs font-bold rounded shadow-sm transition-colors ${isEditingCl ? 'bg-green-500 hover:bg-green-600 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'}`}>
                                                 <i className={`fa-solid ${isEditingCl ? 'fa-check' : 'fa-pen'} mr-1`}></i> {isEditingCl ? 'Save Edits' : 'Edit Letter'}
                                             </button>
-                                        )}
-                                    </div>
+                                        </div>
+                                    )}
+                                    {leftTab === 'portfolio' && portfolio && (
+                                        <div className="flex gap-2 pb-2 pr-2">
+                                            <button onClick={() => downloadHtmlFile(jobData.company, portfolio.portfolio_html)} className="px-3 py-1.5 text-xs font-bold rounded shadow-sm bg-indigo-600 hover:bg-indigo-700 text-white transition-colors flex items-center gap-1.5">
+                                                <i className="fa-solid fa-file-code"></i> Download Webpage (.html)
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                                 
                                 <div className="flex-1 overflow-y-auto custom-scrollbar bg-white flex relative">
@@ -780,10 +790,7 @@
                                         <div className="w-full h-full p-4 bg-slate-900 flex flex-col">
                                             <div className="text-xs text-slate-400 mb-2 font-mono flex items-center justify-between">
                                                 <span><i className="fa-solid fa-circle text-red-500 text-[10px] mr-1"></i><i className="fa-solid fa-circle text-yellow-500 text-[10px] mr-1"></i><i className="fa-solid fa-circle text-green-500 text-[10px] mr-2"></i> Live Web Preview</span>
-                                                
-                                                <button onClick={() => downloadHtmlFile(jobData.company, portfolio.portfolio_html)} className="text-slate-400 hover:text-white transition-colors flex items-center gap-1.5 px-2 py-1" title="Download Portfolio HTML">
-                                                    <i className="fa-solid fa-download"></i> Download Webpage
-                                                </button>
+                                                <span>Tailwind HTML Render</span>
                                             </div>
                                             <iframe 
                                                 title="Tailwind Portfolio Webpage"
